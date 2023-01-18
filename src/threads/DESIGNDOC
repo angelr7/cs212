@@ -9,7 +9,7 @@
 >> Fill in the names and email addresses of your group members.
 
 Pilli Cruz-De Jesus <pilli@stanford.edu>
-Angel Ruiz <ar7@stanford.ed>
+Angel Ruiz <ar7@stanford.edu>
 Fabian Luna <luna1206@stanford.edu>
 
 ---- PRELIMINARIES ----
@@ -41,54 +41,52 @@ struct tick_list_item {
     struct list_elem elem;
 };
     This struct represents an item in the tick list. It has a
-    list elem which is used to manage its position, a thread reference,
-    and tick value for when the thread should wake up. 
-
+    list elem which is used to manage its position, a reference to a 
+    sleeping thread, and a tick value for when the thread should wake up.
 
 ---- ALGORITHMS ----
 
 >> A2: Briefly describe what happens in a call to timer_sleep(),
 >> including the effects of the timer interrupt handler.
-When a function calls timer_sleep() we first disable interrupts. Then we
+When a function calls timer_sleep() we first disable interrupts. Then, we
 check for a valid interval (i.e > 0) and create a new tick_list_item 
 using the current running thread and the tick value. We then insert our 
-tick_list_item into tick_list ordering by ascending tick duration. 
-We then block the thread. 
+tick_list_item into tick_list, ordering by ascending tick duration. We then 
+block the thread. 
 
-The timer_interrupt handler at every tick loops through tick_list
-and checks if the number of OS ticks is greater than every items
-tick value. We then unblock the thread and remove the value from
-the tick list if needed.
+The timer_interrupt handler at every system tick loops through tick_list
+and checks if the number of OS ticks is greater than each item's sleep duration. 
+We then unblock the thread and remove its entry in the tick list if needed.
 
 >> A3: What steps are taken to minimize the amount of time spent in
 >> the timer interrupt handler?
 When we find the first duration that has not elapsed we stop searching. 
 We also carefully monitored our allocation of stack variables so that we
-do not unnecisarily use memory and increase runtime. 
+do not unnecessarily use memory and increase runtime. 
 
 
 ---- SYNCHRONIZATION ----
 
 >> A4: How are race conditions avoided when multiple threads call
 >> timer_sleep() simultaneously?
-Race conditions are avoided because upon a timer interrupt all threads
-whose duration has passed will be woken up. Since the tick_list is ordered
-all of the threads will be woken up in the correct order as well. Because
-we unblock all of the threads in order the simple scheduler maintains the
+Race conditions are avoided because upon a timer interrupt, all threads
+whose duration has passed will be woken up. Since the tick_list is ordered,
+all of the threads will be woken up in the correct order as well. Unblocking 
+all of the threads in order also allows the simple scheduler to maintain the 
 correct thread ordering. 
 
-When we disable interrupts we prevent other threads from modifying shared
-variables such as tick_list and we avoid time discrepencies from calculations
-using timer ticks variable 
+When we disable interrupts we prevent other threads from inconsistently modifying 
+shared variables such as tick_list. We also avoid time discrepencies from calculations
+using the global ticks variable.
 
 >> A5: How are race conditions avoided when a timer interrupt occurs
 >> during a call to timer_sleep()?
 When this situation occurs the interrupt would not be handled because 
 for most of timer_sleep() interupts are disabled. 
 
-If an interrupt were to occur before we disabled them our if condition 
+If an interrupt were to occur before we disabled them, our if condition 
 checks to make sure that the interval has not passed when the original 
-thread is pushed back on the CPU
+thread is pushed back on the CPU.
 
 
 ---- RATIONALE ----

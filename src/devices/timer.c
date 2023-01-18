@@ -83,6 +83,7 @@ timer_elapsed(int64_t then)
   return timer_ticks() - then;
 }
 
+/* Converts two list elems into tick_list_items and compares their tick duration. */
 bool less_than(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
 {
   struct tick_list_item *a_item = list_entry(a, struct tick_list_item, elem);
@@ -96,8 +97,13 @@ void timer_sleep(int64_t ticks)
 {
   int64_t start = timer_ticks();
   ASSERT(intr_get_level() == INTR_ON);
+  
+  /* Disables interrupts and keeps track of the thread's sleeping 
+     duration. 
+     If the thread is interrupted before interrupts are disabled, 
+     the if statement below ensures that the timer hasn't elapsed
+     after the thread is switched back onto the CPU. */
   enum intr_level old_level = intr_disable();
-
   if (timer_elapsed(start) < ticks)
   {
     struct tick_list_item new_item;
@@ -107,7 +113,6 @@ void timer_sleep(int64_t ticks)
     list_insert_ordered(&tick_list, &new_item.elem, less_than, NULL);
     thread_block();
   }
-
   intr_set_level(old_level);
 }
 
@@ -180,6 +185,7 @@ timer_interrupt(struct intr_frame *args UNUSED)
 {
   ticks++;
 
+  /* Start at the first element of the list, and then loop through. */
   struct list_elem *e = list_begin(&tick_list);
   while (e != list_end(&tick_list)) {
     struct tick_list_item *curr = list_entry(e, struct tick_list_item, elem);
@@ -187,6 +193,8 @@ timer_interrupt(struct intr_frame *args UNUSED)
       thread_unblock(curr->thread_ref);
       e = list_pop_front(&tick_list)->next;
     }
+    /* Once we find the first sleep duration that hasn't elapsed,
+       stop searching. */
     else break;
   }
 

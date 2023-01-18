@@ -36,6 +36,7 @@ void timer_init(void)
 {
   pit_configure_channel(0, 2, TIMER_FREQ);
   intr_register_ext(0x20, timer_interrupt, "8254 Timer");
+  list_init(&tick_list);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -82,15 +83,32 @@ timer_elapsed(int64_t then)
   return timer_ticks() - then;
 }
 
+bool less_than(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
+  struct tick_list_item *a_item = list_entry(a, struct tick_list_item, elem);
+  struct tick_list_item *b_item = list_entry(b, struct tick_list_item, elem);
+  return a_item->ticks <  b_item->ticks;
+}
+
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void timer_sleep(int64_t ticks)
 {
   int64_t start = timer_ticks();
-
   ASSERT(intr_get_level() == INTR_ON);
-  while (timer_elapsed(start) < ticks)
-    thread_yield();
+  enum intr_level old_level = intr_disable();
+
+  if (timer_elapsed(start) < ticks)
+  {
+    struct tick_list_item new_item;
+    (&new_item)->thread_ref = thread_current();
+    (&new_item)->ticks = start + ticks;
+
+    list_insert_ordered(&tick_list, &new_item.elem, less_than, NULL);
+    thread_block();
+  }
+
+  intr_set_level(old_level);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -161,6 +179,19 @@ static void
 timer_interrupt(struct intr_frame *args UNUSED)
 {
   ticks++;
+
+  int num_to_pop = 0;
+  struct list_elem *e = list_begin(&tick_list);
+  while (e != list_end(&tick_list)) {
+    struct tick_list_item *curr = list_entry(e, struct tick_list_item, elem);
+    if (timer_ticks() >= curr->ticks) {
+      thread_unblock(curr->thread_ref);
+      list_pop_front(&tick_list);
+      e = list_head(&tick_list);
+    }
+    else break;
+  }
+
   thread_tick();
 }
 

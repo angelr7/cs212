@@ -180,14 +180,12 @@ timer_interrupt(struct intr_frame *args UNUSED)
 {
   ticks++;
 
-  int num_to_pop = 0;
   struct list_elem *e = list_begin(&tick_list);
   while (e != list_end(&tick_list)) {
     struct tick_list_item *curr = list_entry(e, struct tick_list_item, elem);
     if (timer_ticks() >= curr->ticks) {
       thread_unblock(curr->thread_ref);
-      list_pop_front(&tick_list);
-      e = list_head(&tick_list);
+      e = list_pop_front(&tick_list)->next;
     }
     else break;
   }

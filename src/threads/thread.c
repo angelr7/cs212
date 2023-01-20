@@ -305,7 +305,6 @@ void thread_yield(void)
   old_level = intr_disable();
   if (cur != idle_thread)
     list_insert_ordered(&ready_list, &cur->elem, priority_less_than, NULL);
-    // list_push_back(&ready_list, &cur->elem);
   cur->status = THREAD_READY;
 
   schedule();
@@ -332,12 +331,23 @@ void thread_foreach(thread_action_func *func, void *aux)
 void thread_set_priority(int new_priority)
 {
   thread_current()->priority = new_priority;
+  struct thread *next = list_entry(list_begin(&ready_list), struct thread, elem);
+  if (next != idle_thread && thread_get_highest_priority(next) > thread_get_priority())
+    thread_yield();
 }
 
 /* Returns the current thread's priority. */
 int thread_get_priority(void)
 {
-  return thread_current()->priority;
+  return (thread_current()->donated_priority > thread_current()->priority) ? thread_current()->donated_priority : thread_current()->priority;
+}
+
+/* Returns a given thread's highest priority between priority and donated priority. */
+int thread_get_highest_priority(struct thread *t) {
+  // if (t->donated_priority > t->priority)
+  //   return t->donated_priority;
+  // return t->priority;
+  return (t->donated_priority > t->priority) ? t->donated_priority : t->priority;
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -579,7 +589,8 @@ bool priority_less_than(const struct list_elem *a, const struct list_elem *b, vo
 {
   struct thread *a_item = list_entry(a, struct thread, elem);
   struct thread *b_item = list_entry(b, struct thread, elem);
-  return a_item->priority >  b_item->priority;
+  return thread_get_highest_priority(a_item) > thread_get_highest_priority(b_item);
+  // return a_item->priority >  b_item->priority;
 }
 
 /* Offset of `stack' member within `struct thread'.

@@ -72,6 +72,8 @@ static void schedule(void);
 void thread_schedule_tail(struct thread *prev);
 static tid_t allocate_tid(void);
 
+bool priority_less_than(const struct list_elem *a, const struct list_elem *b, void *aux);
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -197,6 +199,9 @@ tid_t thread_create(const char *name, int priority,
   /* Add to run queue. */
   thread_unblock(t);
 
+  if (t->priority > thread_get_priority())
+    thread_yield();
+
   return tid;
 }
 
@@ -231,8 +236,11 @@ void thread_unblock(struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  list_insert_ordered(&ready_list, &t->elem, priority_less_than, NULL);
+  // list_push_back (&ready_list, &t->elem);
   t->status = THREAD_READY;
+  // if (t->priority > thread_get_priority())
+  //   thread_yield();
   intr_set_level(old_level);
 }
 
@@ -299,7 +307,8 @@ void thread_yield(void)
 
   old_level = intr_disable();
   if (cur != idle_thread)
-    list_push_back(&ready_list, &cur->elem);
+    list_insert_ordered(&ready_list, &cur->elem, priority_less_than, NULL);
+    // list_push_back(&ready_list, &cur->elem);
   cur->status = THREAD_READY;
 
   schedule();
@@ -566,6 +575,14 @@ allocate_tid(void)
   lock_release(&tid_lock);
 
   return tid;
+}
+
+/* Converts two list elems into threads and compares their priority. Reversed for descending list ordering. */
+bool priority_less_than(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
+  struct thread *a_item = list_entry(a, struct thread, elem);
+  struct thread *b_item = list_entry(b, struct thread, elem);
+  return a_item->priority >  b_item->priority;
 }
 
 /* Offset of `stack' member within `struct thread'.

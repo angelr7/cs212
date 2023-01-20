@@ -237,6 +237,11 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
+  if (t->priority > thread_get_priority()) {
+    list_push_front(&ready_list, &t->elem);
+    t->status = THREAD_READY;
+    thread_yield();
+  }
   list_push_back (&ready_list, &t->elem);
   t->status = THREAD_READY;
   intr_set_level (old_level);
@@ -462,6 +467,7 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->donated_priority = -1;
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();

@@ -53,7 +53,7 @@ void sema_init(struct semaphore *sema, unsigned value)
    We do greater than because the list implementing this expects it to be less than. By flipping
    the comparison operator, we essentially flip the ordering of the list.
  */
-bool priority_less_than(struct list_elem *a, struct list_elem *b, void *aux UNUSED)
+bool priority_less_than(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
 {
   struct thread *thread_a = list_entry(a, struct thread, elem);
   struct thread *thread_b = list_entry(b, struct thread, elem);
@@ -267,7 +267,7 @@ void cond_init(struct condition *cond)
 /* This returns true if the thread represented by a has a higher priority than the
    one represented by b. The functionality is similar to the priority_less_than function in
    thread.h/c */
-bool cond_priority_less_than(struct list_elem *a, struct list_elem *b, void *aux UNUSED)
+bool cond_priority_less_than(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
 {
   struct semaphore_elem *a_sem = list_entry(a, struct semaphore_elem, elem);
   struct semaphore_elem *b_sem = list_entry(b, struct semaphore_elem, elem);
@@ -275,10 +275,12 @@ bool cond_priority_less_than(struct list_elem *a, struct list_elem *b, void *aux
   /* We can get the thread reference for each semaphore_elem by checking the waiting list
      of the connected semaphore. Each semaphore will only be decreased by one thread, so
      only one item will be in the waiters list. */
-  struct thread *a_thread = a_sem->semaphore.waiters.head;
-  struct thread *b_thread = a_sem->semaphore.waiters.head;
+  struct list_elem *a_thread_elem = list_begin(&a_sem->semaphore.waiters);
+  struct list_elem *b_thread_elem = list_begin(&b_sem->semaphore.waiters);
+  struct thread *thread_a = list_entry(a_thread_elem, struct thread, elem);
+  struct thread *thread_b = list_entry(b_thread_elem, struct thread, elem);
 
-  return a_thread->priority > b_thread->priority;
+  return thread_a->priority > thread_b->priority;
 }
 
 /* Atomically releases LOCK and waits for COND to be signaled by
@@ -311,10 +313,8 @@ void cond_wait(struct condition *cond, struct lock *lock)
   ASSERT(lock_held_by_current_thread(lock));
 
   // TODO: make sure that we take donated priorities into account here
-  int priority = thread_current()->priority;
-
   sema_init(&waiter.semaphore, 0);
-  list_insert_ordered(&cond->waiters, &waiter.elem, cond_priority_less_than, NULL)
+  list_insert_ordered(&cond->waiters, &waiter.elem, cond_priority_less_than, NULL);
   lock_release(lock);
   sema_down(&waiter.semaphore);
   lock_acquire(lock);

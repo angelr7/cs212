@@ -49,16 +49,48 @@ void sema_init(struct semaphore *sema, unsigned value)
   list_init(&sema->waiters);
 }
 
-/* Returns true if the element represented by a is greater than the element represented by b.
-   We do greater than because the list implementing this expects it to be less than. By flipping
-   the comparison operator, we essentially flip the ordering of the list.
- */
-bool priority_less_than(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+static bool donated_priority_less_than(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
 {
-  struct thread *thread_a = list_entry(a, struct thread, elem);
-  struct thread *thread_b = list_entry(b, struct thread, elem);
-  return thread_a->priority > thread_b->priority;
+  struct priority_elem *a_elem = list_entry(a, struct priority_elem, elem);
+  struct priority_elem *b_elem = list_entry(b, struct priority_elem, elem);
+  return a_elem->priority > b_elem->priority;
 }
+
+static void donate_and_propagate(struct thread *t, int level)
+{
+  if (level > 8)
+    return;
+  struct priority_elem new_donation;
+  (&new_donation)->donor = t;
+  (&new_donation)->lock = t->lock_aquiring;
+  (&new_donation)->priority = get_thread_priority(t);
+  struct thread *donee = t->lock_aquiring->holder;
+  struct list *donations = &donee->donated_priorities;
+  for (struct list_elem *e = list_begin(donations); e != list_end(donations); e = e->next)
+  {
+    struct priority_elem *donation = list_entry(e, struct priority_elem, elem);
+    if (donation->lock == t->lock_aquiring)
+    {
+      // TODO: bug with priority donate nest test, removing old priority and inserting new one for same lock breaks list outside of this function (thread_block?)
+      list_remove(e);
+      break;
+    }
+  }
+  list_insert_ordered(donations, &new_donation.elem, donated_priority_less_than, NULL);
+  if (donee->lock_aquiring != NULL)
+    donate_and_propagate(donee, level + 1);
+}
+
+// /* Returns true if the element represented by a is greater than the element represented by b.
+//    We do greater than because the list implementing this expects it to be less than. By flipping
+//    the comparison operator, we essentially flip the ordering of the list.
+//  */
+// bool priority_less_than(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+// {
+//   struct thread *thread_a = list_entry(a, struct thread, elem);
+//   struct thread *thread_b = list_entry(b, struct thread, elem);
+//   return thread_a->priority > thread_b->priority;
+// }
 
 /* Down or "P" operation on a semaphore.  Waits for SEMA's value
    to become positive and then atomically decrements it.
@@ -78,8 +110,11 @@ void sema_down(struct semaphore *sema)
   while (sema->value == 0)
   {
     list_insert_ordered(&sema->waiters, &thread_current()->elem, priority_less_than, NULL);
+    if (thread_current()->lock_aquiring != NULL && list_begin(&sema->waiters) == &thread_current()->elem)
+      donate_and_propagate(thread_current(), 0);
     thread_block();
   }
+  thread_current()->lock_aquiring = NULL;
   sema->value--;
   intr_set_level(old_level);
 }
@@ -109,6 +144,20 @@ bool sema_try_down(struct semaphore *sema)
   return success;
 }
 
+static void delete_donation(struct thread *t, struct lock *lock)
+{
+  struct list *donations = &t->donated_priorities;
+  for (struct list_elem *e = list_begin(donations); e != list_end(donations); e = e->next)
+  {
+    struct priority_elem *donation = list_entry(e, struct priority_elem, elem);
+    if (donation->lock == lock)
+    {
+      list_remove(&donation->elem);
+      return;
+    }
+  }
+}
+
 /* Up or "V" operation on a semaphore.  Increments SEMA's value
    and wakes up one thread of those waiting for SEMA, if any.
 
@@ -120,10 +169,19 @@ void sema_up(struct semaphore *sema)
   ASSERT(sema != NULL);
 
   old_level = intr_disable();
+  bool thread_unblocked = false;
   if (!list_empty(&sema->waiters))
-    thread_unblock(list_entry(list_pop_front(&sema->waiters),
-                              struct thread, elem));
+  {
+    struct thread *next = list_entry(list_min(&sema->waiters, priority_less_than, NULL), struct thread, elem);
+    list_remove(&next->elem);
+    if (thread_current()->lock_releasing != NULL)
+      delete_donation(thread_current(), thread_current()->lock_releasing);
+    thread_unblock(next);
+    thread_unblocked = true;
+  }
   sema->value++;
+  if (thread_unblocked)
+    thread_yield();
   intr_set_level(old_level);
 }
 
@@ -200,6 +258,7 @@ void lock_acquire(struct lock *lock)
   ASSERT(!intr_context());
   ASSERT(!lock_held_by_current_thread(lock));
 
+  thread_current()->lock_aquiring = lock;
   sema_down(&lock->semaphore);
   lock->holder = thread_current();
 }
@@ -234,6 +293,7 @@ void lock_release(struct lock *lock)
   ASSERT(lock_held_by_current_thread(lock));
 
   lock->holder = NULL;
+  thread_current()->lock_releasing = lock;
   sema_up(&lock->semaphore);
 }
 

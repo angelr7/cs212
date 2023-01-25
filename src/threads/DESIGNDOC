@@ -93,6 +93,15 @@ thread is pushed back on the CPU.
 
 >> A6: Why did you choose this design?  In what ways is it superior to
 >> another design you considered?
+When we initially approached the problem, we considered using only condition variables to 
+manage sleeping threads. This quickly became a problem, mainly because it is forbidden for 
+interrupt handlers to acquire locks. For this reason, our team decided to take a simpler 
+approach by creating a global tick_list and disabling interrupts. This was a much better 
+approach because it requires less code, and also allowed us to unblock sleeping threads in the 
+timer interrupt handler. By unblocking sleeping threads inside of this interrupt, we make sure 
+that we consistently wake up threads when necessary, since we check for elapsed durations upon
+every OS tick.
+
 
              PRIORITY SCHEDULING
              ===================

@@ -24,13 +24,6 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
-struct priority_elem
-  {
-   struct thread *donor;
-   struct lock *lock;
-   int priority;
-   struct list_elem elem;
-  };
 
 /* A kernel thread or user process.
 
@@ -96,10 +89,10 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
-    struct list donated_priorities;     /* Donated Priorities. */
     struct list_elem allelem;           /* List element for all threads list. */
     struct lock *lock_aquiring;
     struct lock *lock_releasing;
+    struct list locks_holding;
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -151,6 +144,7 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
-bool priority_less_than(const struct list_elem *a, const struct list_elem *b, void *aux);
+bool thread_priority_less_than(const struct list_elem *a, const struct list_elem *b, void *aux);
+
 
 #endif /* threads/thread.h */

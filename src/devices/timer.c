@@ -30,6 +30,14 @@ static void busy_wait(int64_t loops);
 static void real_time_sleep(int64_t num, int32_t denom);
 static void real_time_delay(int64_t num, int32_t denom);
 
+static struct list tick_list;
+
+struct tick_list_item {
+    int64_t ticks;
+    struct thread *thread_ref;
+    struct list_elem elem;
+};
+
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
 void timer_init(void)
@@ -84,7 +92,7 @@ timer_elapsed(int64_t then)
 }
 
 /* Converts two list elems into tick_list_items and compares their tick duration. */
-bool less_than(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+static bool less_than(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
 {
   struct tick_list_item *a_item = list_entry(a, struct tick_list_item, elem);
   struct tick_list_item *b_item = list_entry(b, struct tick_list_item, elem);

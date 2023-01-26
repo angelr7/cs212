@@ -160,7 +160,8 @@ void thread_tick(void)
   {
     /* if in advanced schedule increment current running thread every tick */
     if(t != idle_thread)
-      t->recent_cpu++;
+    // make sure this is correct 
+      t->recent_cpu+ 1*(2<<14);
     enum intr_level old_level;
     /* once a second disable interupts and recalculate load_avg and recent_cpu for all t */
     if (timer_ticks() % TIMER_FREQ == 0)
@@ -177,9 +178,7 @@ void thread_tick(void)
             list_push_back(&recalculated_recent_cpus, &cur->recent_cpu_elem);
           }
         }
-     
       intr_set_level(old_level);
-
     }
     if (timer_ticks() % TIME_SLICE == 0)
       {
@@ -193,15 +192,14 @@ void thread_tick(void)
           int prev_priority = cur->priority;
           cur->priority = calculate_priority(cur);
           // recalculate all priority but if thread is ready we remove from ready list and insert to correct spot 
-          if (prev_priority != cur->priority && cur->status == THREAD_READY)
+          if (prev_priority != cur->priority && cur->status == THREAD_READY && cur != idle_thread)
           {
             list_remove(&cur->elem);
             list_push_back(&fqs[cur->priority],&cur->elem);
           }
-          
         intr_set_level(old_level);
         }
-        // thread_yield();
+        thread_yield();
       }
   }
   if (++thread_ticks >= TIME_SLICE)

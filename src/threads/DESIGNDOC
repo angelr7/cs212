@@ -368,7 +368,7 @@ calculate_recent_cpu functions. We were running into bugs and found that creatin
 fixed point file made our thread code more readable, made it faster, and left less 
 room for error in our calculations between fixed points. Also having functions for 
 all fixed point arithmetic seperate was better because these fixed point operations 
-were used in other locations as well. When increamenting recent_cpu every tick we 
+were used in other locations as well. When incrementing recent_cpu every tick we 
 utilized add_fp_to_int. In thread_get_load_avg and thread_get_recent_cpu we utilized 
 fp_to_int_round_nearest. The multiple uses of these functions made seperating them
 into their own file the best solution.  

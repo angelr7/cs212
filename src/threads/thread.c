@@ -187,11 +187,11 @@ void thread_tick(void)
 #endif
   else
     kernel_ticks++;
-
-
+    
+  /* advanced scheduler */
   if (thread_mlfqs)
   {
-    /* if in advanced schedule increment current running thread every tick */
+    /* of not idle thread increment current running thread every tick */
     enum intr_level old_level;
     if(t != idle_thread)
     {
@@ -206,8 +206,7 @@ void thread_tick(void)
       old_level = intr_disable();
       load_avg = calculate_load_avg(t);
     /* Precalculate coefficient for all recent_cpu recalculations */
-      int two_load = multiply_fp_by_int(load_avg,2);
-      int coefficient = divide_fp_by_fp(two_load,add_fp_to_int(two_load,1));
+      int coefficient = divide_fp_by_fp(load_avg * 2,add_fp_to_int(load_avg * 2,1));
       thread_foreach(recalculate_all_recent_cpus, (void*)&coefficient);
       intr_set_level(old_level);
     }

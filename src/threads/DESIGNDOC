@@ -55,8 +55,9 @@ tick_list_item into tick_list, ordering by ascending tick duration. We then
 block the thread. 
 
 The timer_interrupt handler at every system tick loops through tick_list
-and checks if the number of OS ticks is greater than each item's sleep duration. 
-We then unblock the thread and remove its entry in the tick list if needed.
+and checks if the number of OS ticks is greater than each item's sleep 
+duration. We then unblock the thread and remove its entry in the tick list
+if needed.
 
 >> A3: What steps are taken to minimize the amount of time spent in
 >> the timer interrupt handler?
@@ -75,9 +76,9 @@ all of the threads will be woken up in the correct order as well. Unblocking
 all of the threads in order also allows the simple scheduler to maintain the 
 correct thread ordering. 
 
-When we disable interrupts we prevent other threads from inconsistently modifying 
-shared variables such as tick_list. We also avoid time discrepencies from calculations
-using the global ticks variable.
+When we disable interrupts we prevent other threads from inconsistently 
+modifying shared variables such as tick_list. We also avoid time discrepencies
+from calculations using the global ticks variable.
 
 >> A5: How are race conditions avoided when a timer interrupt occurs
 >> during a call to timer_sleep()?
@@ -93,14 +94,15 @@ thread is pushed back on the CPU.
 
 >> A6: Why did you choose this design?  In what ways is it superior to
 >> another design you considered?
-When we initially approached the problem, we considered using only condition variables to 
-manage sleeping threads. This quickly became a problem, mainly because it is forbidden for 
-interrupt handlers to acquire locks. For this reason, our team decided to take a simpler 
-approach by creating a global tick_list and disabling interrupts. This was a much better 
-approach because it requires less code, and also allowed us to unblock sleeping threads in the 
-timer interrupt handler. By unblocking sleeping threads inside of this interrupt, we make sure 
-that we consistently wake up threads when necessary, since we check for elapsed durations upon
-every OS tick.
+When we initially approached the problem, we considered using only condition
+variables to manage sleeping threads. This quickly became a problem, mainly 
+because it is forbidden for interrupt handlers to acquire locks. For this 
+reason, our team decided to take a simpler approach by creating a global 
+tick_list and disabling interrupts. This was a much better approach because it
+requires less code, and also allowed us to unblock sleeping threads in the 
+timer interrupt handler. By unblocking sleeping threads inside of this 
+interrupt, we make sure that we consistently wake up threads when necessary,
+since we check for elapsed durations upon every OS tick.
 
 
              PRIORITY SCHEDULING
@@ -119,11 +121,11 @@ struct thread
   struct lock *lock_releasing;
   struct list locks_holding;
 };
-    The added lock_acquiring and lock_releasing lock pointers keeps track of when
-    a thread is in the middle of acquiring and releasing a lock. The locks_holding
-    list keeps track of all the locks a thread is holding for the purposes of
-    calculating priority donation values. fifo_ordering allows us to know the order
-    in which threads are added to the ready queue.
+    The added lock_acquiring and lock_releasing lock pointers keeps track
+    of when a thread is in the middle of acquiring and releasing a lock.
+    The locks_holding list keeps track of all the locks a thread is holding
+    for the purposes of calculating priority donation values. fifo_ordering
+    allows us to know the order in which threads are added to the ready queue.
 
 struct lock
 {
@@ -138,15 +140,16 @@ static unsigned list_order;
 >> B2: Explain the data structure used to track priority donation.
 >> Use ASCII art to diagram a nested donation.  (Alternately, submit a
 >> .png file.)
-In order to track priority donations, each thread keeps a list of all the locks
-it is currently holding. When we want to get the priority of the thread, we take
-the maximum between the threads priority and the maximum of the donated priorities
-coming from the locks it is holding. Obtain the maximum of the donated priorities
-by looping through all the locks the thread is holding and finding the maximum
-priority of each locks waiters. This algorithm uses a top down approach and recursively 
-calls get_thread_priority() in order to calculate the priorities of the donor threads.
-This recursive call will go a level down use the same logic to retrieve the donated
-priority from the donor threads own donors.
+In order to track priority donations, each thread keeps a list of all the
+locks it is currently holding. When we want to get the priority of the thread,
+we take the maximum between the threads priority and the maximum of the
+donated priorities coming from the locks it is holding. Obtain the maximum 
+of the donated priorities by looping through all the locks the thread is
+holding and finding the maximumpriority of each locks waiters. This algorithm
+uses a top down approach and recursively 
+calls get_thread_priority() in order to calculate the priorities of the donor
+threads. This recursive call will go a level down use the same logic to 
+retrieve the donated priority from the donor threads own donors.
 
 Nested Priority Graph:
 https://web.stanford.edu/~luna1206/priority_donate_graph.png
@@ -166,54 +169,60 @@ ties, they are broken using the fifo_ordering thread member variable that keeps
 track of the order that a thread was added to the ready list. Thread's with a
 lower fifo_ordering are considered greater because they were added to the list
 earlier. The fifo_ordering is reassigned every time a thread is addded back to
-the ready list using the global list_order variable that we increment with every
-insertion.
+the ready list using the global list_order variable that we increment with
+every insertion.
 
 >> B4: Describe the sequence of events when a call to lock_acquire()
 >> causes a priority donation.  How is nested donation handled?
 Within the lock_acquire function before calling sema_down, we set the
 thread's lock_aquiring member to point to the lock. Within the sema_down
 function, the thread will add itself to the lock semaphore's waiters list
-and block. When the thread is able to continue within sema_down (acquire the lock),
-it will check if it is currently aquiring a lock by checking if the thread's 
-lock_acquiring member is not NULL. If it is aquiring a lock, then we add 
-the lock we are acquiring to the thread's locks_holding list and set 
+and block. When the thread is able to continue within sema_down (acquire the 
+lock), it will check if it is currently aquiring a lock by checking if the 
+thread's lock_acquiring member is not NULL. If it is aquiring a lock, then we
+add the lock we are acquiring to the thread's locks_holding list and set 
 lock_acquiring to NULL to signify that we are done with the process of 
 acquiring this lock and exit sema_down.
 
-We handle nested donations by adding acquired locks to each thread's locks_holding
-list. When retrieving the thread's priority, we utilize the locks_holding list 
-to calculated the thread's donated priority by looping through the list and 
-getting the donated priority coming from the waiters of those locks. In the nested 
-case, we also go through the waiting threads' locks_holding lists to retrieve 
-their nested donated priorities using a top down, recursive approach. No other
-action is taken to handle nested donations other than adding the acquired lock to
-the threads locks_holding list.
+We handle nested donations by adding acquired locks to each thread's 
+locks_holding list. When retrieving the thread's priority, we utilize the 
+locks_holding list to calculated the thread's donated priority by looping 
+through the list and getting the donated priority coming from the waiters 
+of those locks. In the nested case, we also go through the waiting threads' 
+locks_holding lists to retrieve their nested donated priorities using a top 
+down, recursive approach. No other action is taken to handle nested donations
+other than adding the acquired lock to the threads locks_holding list.
 
->> B5: Describe the sequence of events when lock_release() is called
+>> B5: Describe the sequence of events when lock_release() is called 
 >> on a lock that a higher-priority thread is waiting for.
-In the lock_release function we set the thread's lock_releasing member to point to
-the lock that the thread is currently holding, prior to calling sema_up. Within the
-call to sema_up, we initialize a thread_unblocked bool to false. If there are threads
-waiting on this semaphore, we pull the thread with the highest priority from the
-waiters list using the list_max function. We remove that thread from the list and 
-unblock that thread to add it back to the ready list. We set the thread_unblocked
-flag to true and remove the lock from the current thread's locks_holding list using the
-lock_releasing member. If we have unblockd a thread, we call thread_yield and allow the
-scheduler to schedule the unblocked higher-priority thread that was just unblocked.
+
+In the lock_release function
+we set the thread's lock_releasing member to point to the lock that the thread
+is currently holding, prior to calling sema_up. Within the call to sema_up, we
+initialize a thread_unblocked bool to false. If there are threads waiting on
+this semaphore, we pull the thread with the highest priority from the waiters
+list using the list_max function. We remove that thread from the list and
+unblock that thread to add it back to the ready list. We set the
+thread_unblocked flag to true and remove the lock from the current thread's
+locks_holding list using the lock_releasing member. If we have unblockd a
+thread, we call thread_yield and allow the scheduler to schedule the unblocked
+higher-priority thread that was just       
+unblocked.
 
 ---- SYNCHRONIZATION ----
 
 >> B6: Describe a potential race in thread_set_priority() and explain
 >> how your implementation avoids it.  Can you use a lock to avoid
 >> this race?
+
 In thread_set_priority() there is the potential race condition where the thread
-is preempted and yields while modifying its priority member variable, and the scheduler
-is not able to correctly schedule the thread whose priority we were changing with
-the updated value. We cannot solve this with a lock because thread_get_priority() is called on
-this thread in the schedule() and next_thread_to_run() function, which run with interrupts
-disabled. We cannot acquire locks while interrupts are disabled, so we must also disable
-interrupts in the thread_set_priority() function.
+is preempted and yields while modifying its priority member variable, and the
+scheduler is not able to correctly schedule the thread whose priority we were
+changing with the updated value. We cannot solve this with a lock because
+thread_get_priority() is called on this thread in the schedule() and
+next_thread_to_run() function, which run with interrupts disabled. We cannot
+acquire locks while interrupts are disabled, so we must also disable interrupts
+in the thread_set_priority() function.
 
 
 
@@ -222,28 +231,34 @@ interrupts in the thread_set_priority() function.
 >> B7: Why did you choose this design?  In what ways is it superior to
 >> another design you considered?
 
-Previously, we had attempted to have each thread keep track of its own priority donations
-list to make calls to thread_get_priority only have to compare a thread's priority member
-variable to the maximum of its priority donations list. We also attempted to keep all lists
-(ready_list, condition variable and semaphore waiters lists) ordered by inserting elements in 
-an ordered fashion, that way we could pop from one end of the list when we wanted to get the 
-maximum. This proved to be a much more complex and demanding implementation, because any change
-to a threads priority or a priority donation would call for a resorting of all lists that were
-affected. All changes also needed to be propagated through nested donation changes using a bottom
-up approach. Furthermore, we ran into multiple bugs with priority donation lists becoming corrupted
-seemingly out of nowhere. This also made it difficult to ensure round robin ordering with the
-constant need to resort many lists, including the ready list.
+Previously, we had attempted to have each thread keep track of its own priority
+donations list to make calls to thread_get_priority only have to compare a
+thread's priority member variable to the maximum of its priority donations list.
+We also attempted to keep all lists (ready_list, condition variable and
+semaphore waiters lists) ordered by inserting elements in an ordered fashion,
+that way we could pop from one end of the list when we wanted to get the
+maximum. This proved to be a much more complex and demanding implementation,
+because any change to a threads priority or a priority donation would call for a
+resorting of all lists that were affected. All changes also needed to be
+propagated through nested donation changes using a bottom up approach.
+Furthermore, we ran into multiple bugs with priority donation lists becoming
+corrupted seemingly out of nowhere. This also made it difficult to ensure round
+robin ordering with the constant need to resort many lists, including the ready
+list.
 
-Our implementation simplified this logic and only keeps track of the bare minimum necessary to
-calculate priority donations. We implemented the locks_holding list that contains existing locks,
-no longer needing to create additional priority donation elements for the priority donations list
-therefore using less memory. Furthermore, rather than constantly resorting lists with any changes
-made to priorities or priority donations, using a top down approach and retrieving thread priorities
-utlizing threads_lock_holding lists proved to be a straightforward implementation that required
-less memory. This also minimized the amount of time spent within disabled interrupts contexts in the
-synchronization primitives. Previously, donation changes needed to be handled immediately within the code
-for these synchronization primitives. Our final implemenation only called for a single elements list removal
-or insertion when acquiring or releasing locks.
+Our implementation simplified this logic and only keeps track of the bare
+minimum necessary to calculate priority donations. We implemented the
+locks_holding list that contains existing locks, no longer needing to create
+additional priority donation elements for the priority donations list therefore
+using less memory. Furthermore, rather than constantly resorting lists with any
+changes made to priorities or priority donations, using a top down approach and
+retrieving thread priorities utlizing threads_lock_holding lists proved to be a
+straightforward implementation that required less memory. This also minimized
+the amount of time spent within disabled interrupts contexts in the
+synchronization primitives. Previously, donation changes needed to be handled
+immediately within the code for these synchronization primitives. Our final
+implemenation only called for a single elements list removal or insertion when
+acquiring or releasing locks.
 
               ADVANCED SCHEDULER
               ==================
@@ -307,9 +322,10 @@ to do in our real approach as well.
 
 When it comes to calculating recent_cpu, priority, and load_avg, the order is
 not explicity specified in the project documentation. On the threads fourth tick
-we first increment recent_cpu, and then calculate the priority afterwards if necessary.
-Although it isn't relevant for the problem above, we also must follow
+we first increment recent_cpu, and then calculate the priority afterwards if
+necessary. Although it isn't relevant for the problem above, we also must follow
 this process on the OS's 100th tick in this order:
+
     -- Increment recent_cpu for running thread
     -- Calculate load_avg. This is done once, since load_avg isn't thread specific.
     -- Recalculate recent_cpu for all threads
@@ -318,16 +334,15 @@ this process on the OS's 100th tick in this order:
 >> C4: How is the way you divided the cost of scheduling between code
 >> inside and outside interrupt context likely to affect performance?
 
-The recalculations performed every 4 and 100 ticks are done within the
-interrupt context so it is important that they are done quickly to give 
-as much time for the process to run as possible. In the case that our 
-calculations in an interrupt context take too long we risk starving the 
-process by continuously interrupting. For that reason, we decomposed
-fixed-point to streamline all of the arithmetic for the compiler. We also minimize 
-what we declared and initialized in the interrupt context. This minimization is
-evident from our use and creation of functions such as thread_forEach, 
-recalculate_recent_cpu, recalculate_load_avg, recalculate_priorities, and
-recalculate_all_recent_cpus. 
+The recalculations performed every 4 and 100 ticks are done within the interrupt
+context so it is important that they are done quickly to give as much time for
+the process to run as possible. In the case that our calculations in an
+interrupt context take too long we risk starving the process by continuously
+interrupting. For that reason, we decomposed fixed-point to streamline all of
+the arithmetic for the compiler. We also minimize what we declared and
+initialized in the interrupt context. This minimization is evident from our use
+and creation of functions such as thread_forEach, recalculate_recent_cpu,
+recalculate_load_avg, recalculate_priorities, and recalculate_all_recent_cpus. 
 
 Our original implementation did not have streamlined arithmetic and did not 
 decompose and minimize declarations in the interrupt context. As a result, 
@@ -342,17 +357,17 @@ implementation.
 >> time to work on this part of the project, how might you choose to
 >> refine or improve your design?
 
-The advantages of our design lies in the memory optimizations that we made
-in our program. For example, we use thread_foreach to streamline the operations
-that we make when updating all threads. In addition, we supply a recent_cpu_changed
-boolean to the thread struct, which allows us to determine if we need to recalculate 
-its priority in a more lightweight manner (i.e. compared to a list).
-The cons of our design mostly pertains to the way that we handle recalculations related
-to thread priority. Although we tried to optimize using thread_foreach, we would be able
-to further optimize our search and updating process if we used a list of threads whose 
-recent_cpu was recalucated. If we were to have extra time, we would most likely spend it 
-trying to optmize this process, since we unnecessarily loop over all threads by using
-thread_foreach.
+The advantages of our design lies in the memory optimizations that we made in
+our program. For example, we use thread_foreach to streamline the operations
+that we make when updating all threads. In addition, we supply a
+recent_cpu_changed boolean to the thread struct, which allows us to determine if
+we need to recalculate its priority in a more lightweight manner (i.e. compared
+to a list). The cons of our design mostly pertains to the way that we handle
+recalculations related to thread priority. Although we tried to optimize using
+thread_foreach, we would be able to further optimize our search and updating
+process if we used a list of threads whose recent_cpu was recalucated. If we
+were to have extra time, we would most likely spend it trying to optmize this
+process, since we unnecessarily loop over all threads by using thread_foreach.
 
 
 >> C6: The assignment explains arithmetic for fixed-point math in
@@ -362,16 +377,17 @@ thread_foreach.
 >> type and/or a set of functions or macros to manipulate fixed-point
 >> numbers, why did you do so?  If not, why not?
 
-Our initial approach was without a seperate fixed-point file. In this version we 
-calculated all fixed point math in the calulate_load_avg, calculate_priority, and 
-calculate_recent_cpu functions. We were running into bugs and found that creating a 
-fixed point file made our thread code more readable, made it faster, and left less 
-room for error in our calculations between fixed points. Also having functions for 
-all fixed point arithmetic seperate was better because these fixed point operations 
-were used in other locations as well. When incrementing recent_cpu every tick we 
-utilized add_fp_to_int. In thread_get_load_avg and thread_get_recent_cpu we utilized 
-fp_to_int_round_nearest. The multiple uses of these functions made seperating them
-into their own file the best solution.  
+Our initial approach was without a seperate fixed-point file. In this version we
+calculated all fixed point math in the calulate_load_avg, calculate_priority,
+and calculate_recent_cpu functions. We were running into bugs and found that
+creating a fixed point file made our thread code more readable, made it faster,
+and left less room for error in our calculations between fixed points. Also
+having functions for all fixed point arithmetic seperate was better because
+these fixed point operations were used in other locations as well. When
+incrementing recent_cpu every tick we utilized add_fp_to_int. In
+thread_get_load_avg and thread_get_recent_cpu we utilized
+fp_to_int_round_nearest. The multiple uses of these functions made seperating
+them into their own file the best solution.  
 
 
                SURVEY QUESTIONS

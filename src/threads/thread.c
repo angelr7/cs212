@@ -55,6 +55,8 @@ static long long user_ticks;   /* # of timer ticks in user programs. */
 #define TIME_SLICE 4          /* # of timer ticks to give each thread. */
 static unsigned thread_ticks; /* # of timer ticks since last yield. */
 
+static unsigned list_order;
+
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
@@ -101,7 +103,7 @@ void thread_init(void)
   init_thread(initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid();
-  // malloc_init();
+  list_order = 0;
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -238,7 +240,9 @@ void thread_unblock(struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_front(&ready_list, &t->elem);
+  // list_insert_ordered(&ready_list, &t->elem, thread_priority_less_than, NULL);
+  list_push_back(&ready_list, &t->elem);
+  t->fifo_ordering = ++list_order;
   t->status = THREAD_READY;
   intr_set_level(old_level);
 }
@@ -306,7 +310,10 @@ void thread_yield(void)
 
   old_level = intr_disable();
   if (cur != idle_thread)
+  {
     list_push_front(&ready_list, &cur->elem);
+    cur->fifo_ordering = ++list_order;
+  }
   cur->status = THREAD_READY;
 
   schedule();
@@ -333,6 +340,7 @@ void thread_foreach(thread_action_func *func, void *aux)
 void thread_set_priority(int new_priority)
 {
   thread_current()->priority = new_priority;
+  // thread_current()->fifo_ordering = timer_ticks();
   if (!list_empty(&ready_list))
   {
     struct thread *next = list_entry(list_max(&ready_list, thread_priority_less_than, NULL), struct thread, elem);
@@ -482,9 +490,10 @@ init_thread(struct thread *t, const char *name, int priority)
   strlcpy(t->name, name, sizeof t->name);
   t->stack = (uint8_t *)t + PGSIZE;
   t->priority = priority;
-  t->lock_aquiring = NULL;
+  t->lock_acquiring = NULL;
   t->lock_releasing = NULL;
   list_init(&t->locks_holding);
+  t->fifo_ordering = 0;
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable();
@@ -610,7 +619,11 @@ bool thread_priority_less_than(const struct list_elem *a, const struct list_elem
 {
   struct thread *a_item = list_entry(a, struct thread, elem);
   struct thread *b_item = list_entry(b, struct thread, elem);
-  return get_thread_priority(a_item) < get_thread_priority(b_item);
+  int a_priority = get_thread_priority(a_item);
+  int b_priority = get_thread_priority(b_item);
+  if (a_priority == b_priority)
+    return a_item->fifo_ordering > b_item->fifo_ordering;
+  return a_priority < b_priority;
 }
 
 /* Offset of `stack' member within `struct thread'.

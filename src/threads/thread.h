@@ -89,8 +89,9 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
+    unsigned fifo_ordering;
     struct list_elem allelem;           /* List element for all threads list. */
-    struct lock *lock_aquiring;
+    struct lock *lock_acquiring;
     struct lock *lock_releasing;
     struct list locks_holding;
 

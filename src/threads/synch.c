@@ -49,6 +49,27 @@ void sema_init(struct semaphore *sema, unsigned value)
   list_init(&sema->waiters);
 }
 
+// static adjust_lists(struct thread *t)
+// {
+//   struct thread *donee = t->lock_acquiring->holder;
+//   while (donee->lock_acquiring != NULL) {
+//     struct list *lock_waiters = donee->lock_acquiring->semaphore.waiters
+//     if (&donee->elem != list_begin(lock_waiters))
+//     {
+//       if (get_thread_priority(list_entry(list_prev(&donee->elem)), struct thread, elem) > get_thread_priority(donee))
+//       {
+//         list_remove(&donee->elem);
+//         list_insert_ordered(lock_waiters, &donee->elem, thread_priority_less_than, NULL);
+//       }
+//     }
+//   }
+  
+//   if (donee->status = THREAD_READY && &donee->elem != list_begin())
+//   {
+//     if ()
+//   }
+// }
+
 /* Down or "P" operation on a semaphore.  Waits for SEMA's value
    to become positive and then atomically decrements it.
 
@@ -66,13 +87,16 @@ void sema_down(struct semaphore *sema)
   old_level = intr_disable();
   while (sema->value == 0)
   {
+    // list_insert_ordered(&sema->waiters, &thread_current()->elem, thread_priority_less_than, NULL);
     list_push_back(&sema->waiters, &thread_current()->elem);
+    // thread_current()->tick_added_to_list = timer_ticks();
+    // adjust_lists(thread_current());
     thread_block();
   }
-  if (thread_current()->lock_aquiring != NULL)
+  if (thread_current()->lock_acquiring != NULL)
   {
-    list_push_back(&thread_current()->locks_holding, &thread_current()->lock_aquiring->elem);
-    thread_current()->lock_aquiring = NULL;
+    list_push_back(&thread_current()->locks_holding, &thread_current()->lock_acquiring->elem);
+    thread_current()->lock_acquiring = NULL;
   }
   sema->value--;
   intr_set_level(old_level);
@@ -117,6 +141,7 @@ void sema_up(struct semaphore *sema)
   bool thread_unblocked = false;
   if (!list_empty(&sema->waiters))
   {
+    // struct thread *next = list_entry(list_pop_back(&sema->waiters), struct thread, elem);
     struct thread *next = list_entry(list_max(&sema->waiters, thread_priority_less_than, NULL), struct thread, elem);
     list_remove(&next->elem);
     thread_unblock(next);
@@ -208,7 +233,7 @@ void lock_acquire(struct lock *lock)
   ASSERT(!intr_context());
   ASSERT(!lock_held_by_current_thread(lock));
 
-  thread_current()->lock_aquiring = lock;
+  thread_current()->lock_acquiring = lock;
   sema_down(&lock->semaphore);
   lock->holder = thread_current();
 }
@@ -290,7 +315,8 @@ bool cond_priority_less_than(const struct list_elem *a, const struct list_elem *
   struct thread *thread_a = list_entry(a_thread_elem, struct thread, elem);
   struct thread *thread_b = list_entry(b_thread_elem, struct thread, elem);
 
-  return get_thread_priority(thread_a) < get_thread_priority(thread_b);
+  return thread_priority_less_than(&thread_a->elem, &thread_b->elem, aux);
+  // return get_thread_priority(thread_a) < get_thread_priority(thread_b);
 }
 
 /* Atomically releases LOCK and waits for COND to be signaled by
@@ -323,6 +349,7 @@ void cond_wait(struct condition *cond, struct lock *lock)
   ASSERT(lock_held_by_current_thread(lock));
 
   sema_init(&waiter.semaphore, 0);
+  // list_insert_ordered(&cond->waiters, &waiter.elem, cond_priority_less_than, NULL);
   list_push_front(&cond->waiters, &waiter.elem);
   lock_release(lock);
   sema_down(&waiter.semaphore);
@@ -345,6 +372,7 @@ void cond_signal(struct condition *cond, struct lock *lock UNUSED)
 
   if (!list_empty(&cond->waiters))
   {
+    // struct semaphore_elem *waiter = list_entry(list_pop_back(&cond->waiters), struct semaphore_elem, elem);
     struct semaphore_elem *waiter = list_entry(list_max(&cond->waiters, cond_priority_less_than, NULL), struct semaphore_elem, elem);
     list_remove(&waiter->elem);
     sema_up(&waiter->semaphore);

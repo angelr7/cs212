@@ -24,7 +24,6 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
-
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -90,6 +89,9 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     unsigned fifo_ordering;
+    int nice;
+    int recent_cpu;
+    struct list_elem recent_cpu_elem;           /* recent cpu elem */
     struct list_elem allelem;           /* List element for all threads list. */
     struct lock *lock_acquiring;
     struct lock *lock_releasing;
@@ -111,6 +113,11 @@ struct thread
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
+
+static struct list ready_list;
+static int load_avg;
+static struct list fqs[64];
+
 
 void thread_init (void);
 void thread_start (void);

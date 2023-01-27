@@ -92,7 +92,7 @@ int get_thread_priority(struct thread *);
 bool thread_priority_less_than(const struct list_elem *a, const struct list_elem *b, void *aux);
 
 static int calculate_priority(struct thread *t);
-static int calculate_recent_cpu(struct thread *t);
+static int calculate_recent_cpu(struct thread *t, int coefficient);
 static int calculate_load_avg(struct thread *t);
 
 /* Initializes the threading system by transforming the code
@@ -156,6 +156,38 @@ void thread_start(void)
   sema_down(&idle_started);
 }
 
+int recalculate_all_recent_cpus(struct thread *cur, void *aux)
+{
+  // struct thread *cur = list_entry(e, struct thread, allelem);      
+  int old_cpu = cur->recent_cpu;
+  cur->recent_cpu = calculate_recent_cpu(cur, *((int*)aux));
+  if (old_cpu != cur->recent_cpu && !cur->recent_cpu_changed)
+  {
+    list_push_back(&recalculated_recent_cpus, &cur->recent_cpu_elem);
+    cur->recent_cpu_changed = true;
+  }
+}
+
+int recalculate_priorities(struct thread *cur, void *aux UNUSED)
+{
+  // struct thread *cur = list_entry(e, struct thread, recent_cpu_elem);
+    // list_remove(&cur->recent_cpu_elem);
+    if (cur->recent_cpu_changed){
+      int prev_priority = cur->priority;
+      cur->priority = calculate_priority(cur);
+      cur->recent_cpu_changed = false;
+      // recalculate all priority but if thread is ready we remove from ready list and insert to correct spot 
+      if (prev_priority != cur->priority && cur->status == THREAD_READY && cur != idle_thread)
+      {
+        list_remove(&cur->elem);
+        list_push_back(&mlfq[cur->priority],&cur->elem);
+      }
+    }
+
+    // for (struct list_elem *e = list_begin(&recalculated_recent_cpus); e != list_end(&recalculated_recent_cpus); e = e->next)
+    //   list_remove(&cur->recent_cpu_elem);
+}
+
 /* Called by the timer interrupt handler at each timer tick.
    Thus, this function runs in an external interrupt context. */
 void thread_tick(void)
@@ -176,57 +208,39 @@ void thread_tick(void)
   if (thread_mlfqs)
   {
     /* if in advanced schedule increment current running thread every tick */
+    enum intr_level old_level;
     if(t != idle_thread)
     {
       t->recent_cpu = add_fp_to_int(t->recent_cpu, 1);
-      if (!t->recent_cpu_changed) {
-        list_push_back(&recalculated_recent_cpus, &t->recent_cpu_elem);
+      if (!t->recent_cpu_changed) 
+      {
+        // old_level = intr_disable();
+        // list_push_back(&recalculated_recent_cpus, &t->recent_cpu_elem);
         t->recent_cpu_changed = true;
+        // intr_set_level(old_level);
       }
     }
     // make sure this is correct 
     
-    enum intr_level old_level;
     /* once a second disable interupts and recalculate load_avg and recent_cpu for all t */
     if (timer_ticks() % TIMER_FREQ == 0 && !list_empty(&all_list))
     {
       old_level = intr_disable();
       load_avg = calculate_load_avg(t);
-      for (struct list_elem *e = list_begin(&all_list); e != list_end(&all_list); e = e->next)
-        {
-          struct thread *cur = list_entry(e, struct thread, allelem);      
-          int old_cpu = cur->recent_cpu;
-          cur->recent_cpu = calculate_recent_cpu(cur);
-          if (old_cpu != cur->recent_cpu && !cur->recent_cpu_changed)
-          {
-            list_push_back(&recalculated_recent_cpus, &cur->recent_cpu_elem);
-            cur->recent_cpu_changed = true;
-          }
-        }
+
+      int two_load = multiply_fp_by_int(load_avg,2);
+      int coefficient = divide_fp_by_fp(two_load,add_fp_to_int(two_load,1));
+      thread_foreach(recalculate_all_recent_cpus, (void*)&coefficient);
       intr_set_level(old_level);
     }
     if (timer_ticks() % TIME_SLICE == 0 && !list_empty(&recalculated_recent_cpus))
     {
-      if (list_empty(&recalculated_recent_cpus))
-        continue;
       old_level = intr_disable();
       /* go through each recalculated thread remove from recalculated list
       and set its new priority in fqs */
-      for (struct list_elem *e = list_begin(&recalculated_recent_cpus); e != list_end(&recalculated_recent_cpus); e = e->next)
-      {
-        struct thread *cur = list_entry(e, struct thread, recent_cpu_elem);
-        list_remove(&cur->recent_cpu_elem);
-        int prev_priority = cur->priority;
-        cur->priority = calculate_priority(cur);
-        cur->recent_cpu_changed = false;
-        // recalculate all priority but if thread is ready we remove from ready list and insert to correct spot 
-        if (prev_priority != cur->priority && cur->status == THREAD_READY && cur != idle_thread)
-        {
-          list_remove(&cur->elem);
-          list_push_back(&mlfq[cur->priority],&cur->elem);
-        }
-        intr_set_level(old_level);
-      }
+
+      thread_foreach(recalculate_priorities,NULL);
+      intr_set_level(old_level);
       intr_yield_on_return();
     }
   }
@@ -421,7 +435,6 @@ void thread_yield(void)
       list_push_back(&ready_list, &cur->elem);
       cur->fifo_ordering = ++list_order;
     }
-    ready_threads_count++;
   }
   cur->status = THREAD_READY;
 
@@ -788,12 +801,12 @@ static int calculate_priority(struct thread *t)
       // PRI_MAX*(2 << 14) - (t->recent_cpu / 4) - (t->nice * 2)*(2 << 14))/(2 << 14);
 }
 
-static int calculate_recent_cpu(struct thread *t)
+static int calculate_recent_cpu(struct thread *t, int coefficient)
 {
-    int two_load = multiply_fp_by_int(load_avg,2);
-    // turn this into ints
-    // int coefficient = ((int64_t)(2*load_avg))*(2 << 14)/(2*load_avg + 1*(2 << 14));
-    int coefficient = divide_fp_by_fp(two_load,add_fp_to_int(two_load,1));
+    // int two_load = multiply_fp_by_int(load_avg,2);
+    // // turn this into ints
+    // // int coefficient = ((int64_t)(2*load_avg))*(2 << 14)/(2*load_avg + 1*(2 << 14));
+    // int coefficient = divide_fp_by_fp(two_load,add_fp_to_int(two_load,1));
     // return (((int64_t)coefficient) * t->recent_cpu / (2 << 14) + t->nice * (2 << 14))*100;
     return add_fp_to_int(multiply_fp_by_fp(coefficient,t->recent_cpu),t->nice);
 }

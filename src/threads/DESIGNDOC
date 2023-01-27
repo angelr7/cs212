@@ -222,12 +222,24 @@ ticks   A   B   C   A   B   C   to run
 >> time to work on this part of the project, how might you choose to
 >> refine or improve your design?
 
+
 >> C6: The assignment explains arithmetic for fixed-point math in
 >> detail, but it leaves it open to you to implement it.  Why did you
 >> decide to implement it the way you did?  If you created an
 >> abstraction layer for fixed-point math, that is, an abstract data
 >> type and/or a set of functions or macros to manipulate fixed-point
 >> numbers, why did you do so?  If not, why not?
+
+We initially tried an approach without a fixed-point file and calculated all 
+the math in the calulate_load_avg, calculate_priority, and calculate_recent_cpu
+functions. We were running into bugs and found that creating a fixed point file
+made our thread code more readable, made it faster, and left less room for error
+in our calculations between fixed points. Also, we used the set of functions in
+fixed-point.c because there were other places where fixed pointer arithmetic was
+needed such as increamenting recent_cpu every tick and fp_to_int_round_nearest
+which was used in functions thread_get_load_avg and thread_get_recent_cpu. The
+multiple use of these functions made it a good candidate to put in a seperate file
+with function calls to not be rewritten. 
 
                SURVEY QUESTIONS
                ================

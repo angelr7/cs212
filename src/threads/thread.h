@@ -90,7 +90,7 @@ struct thread
     int priority;                       /* Priority. */
     unsigned fifo_ordering;
     int nice;
-    int recent_cpu;
+    uint32_t recent_cpu;
     struct list_elem recent_cpu_elem;           /* recent cpu elem */
     bool recent_cpu_changed;
     struct list_elem allelem;           /* List element for all threads list. */
@@ -116,7 +116,7 @@ struct thread
 extern bool thread_mlfqs;
 
 // extern struct list ready_list;
-extern int load_avg;
+extern uint32_t load_avg;
 // extern struct list fqs[64];
 extern int ready_threads_count;
 

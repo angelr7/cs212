@@ -1,5 +1,9 @@
 #include "threads/thread.h"
 
+int ready_threads_count;
+int load_avg;
+
+
 int calculate_priority(struct thread *t);
 int calculate_recent_cpu(struct thread *t);
 int calculate_load_avg(struct thread *t);
@@ -21,5 +25,5 @@ int calculate_recent_cpu(struct thread *t)
 int calculate_load_avg(struct thread *t UNUSED)
 {   
     // not sure if i can do list_size of fqs
-    return (((int64_t) (59*(2 << 14)/60))*load_avg/(2 << 14) + (1*(2 << 14)/60)*list_size(&fqs))*100;
+    return (((int64_t) (59*(2 << 14)/60))*load_avg/(2 << 14) + (1*(2 << 14)/60)*ready_threads_count)*100;
 }

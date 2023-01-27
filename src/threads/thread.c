@@ -206,6 +206,8 @@ void thread_tick(void)
     }
     if (timer_ticks() % TIME_SLICE == 0)
     {
+      if (list_empty(&recalculated_recent_cpus))
+        continue;
       old_level = intr_disable();
       /* go through each recalculated thread remove from recalculated list
       and set its new priority in fqs */

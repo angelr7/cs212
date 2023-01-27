@@ -49,27 +49,6 @@ void sema_init(struct semaphore *sema, unsigned value)
   list_init(&sema->waiters);
 }
 
-// static adjust_lists(struct thread *t)
-// {
-//   struct thread *donee = t->lock_acquiring->holder;
-//   while (donee->lock_acquiring != NULL) {
-//     struct list *lock_waiters = donee->lock_acquiring->semaphore.waiters
-//     if (&donee->elem != list_begin(lock_waiters))
-//     {
-//       if (get_thread_priority(list_entry(list_prev(&donee->elem)), struct thread, elem) > get_thread_priority(donee))
-//       {
-//         list_remove(&donee->elem);
-//         list_insert_ordered(lock_waiters, &donee->elem, thread_priority_less_than, NULL);
-//       }
-//     }
-//   }
-  
-//   if (donee->status = THREAD_READY && &donee->elem != list_begin())
-//   {
-//     if ()
-//   }
-// }
-
 /* Down or "P" operation on a semaphore.  Waits for SEMA's value
    to become positive and then atomically decrements it.
 
@@ -87,10 +66,7 @@ void sema_down(struct semaphore *sema)
   old_level = intr_disable();
   while (sema->value == 0)
   {
-    // list_insert_ordered(&sema->waiters, &thread_current()->elem, thread_priority_less_than, NULL);
     list_push_back(&sema->waiters, &thread_current()->elem);
-    // thread_current()->tick_added_to_list = timer_ticks();
-    // adjust_lists(thread_current());
     thread_block();
   }
   if (thread_current()->lock_acquiring != NULL)
@@ -141,7 +117,6 @@ void sema_up(struct semaphore *sema)
   bool thread_unblocked = false;
   if (!list_empty(&sema->waiters))
   {
-    // struct thread *next = list_entry(list_pop_back(&sema->waiters), struct thread, elem);
     struct thread *next = list_entry(list_max(&sema->waiters, thread_priority_less_than, NULL), struct thread, elem);
     list_remove(&next->elem);
     thread_unblock(next);

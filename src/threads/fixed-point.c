@@ -1,5 +1,7 @@
 #include "threads/fixed-point.h"
 
+/* Fixed-point streamlines all fixed-point and int math to simplify code in thread.c */
+
 const int f = (1<<14);
 
 // Convert n to fixed point:	n * f

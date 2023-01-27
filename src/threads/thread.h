@@ -88,15 +88,15 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
-    unsigned fifo_ordering;
-    int nice;
-    int recent_cpu;
-    struct list_elem recent_cpu_elem;           /* recent cpu elem */
-    bool recent_cpu_changed;
+    unsigned fifo_ordering;             /* Fifo Ordering. */
+    int nice;                           /* Nice. */
+    int recent_cpu;                     /* Recent_cpu. */
+    struct list_elem recent_cpu_elem;   /* Recent cpu elem */
+    bool recent_cpu_changed;            /* Recent cpu changed */
     struct list_elem allelem;           /* List element for all threads list. */
-    struct lock *lock_acquiring;
-    struct lock *lock_releasing;
-    struct list locks_holding;
+    struct lock *lock_acquiring;        /* Lock for acquiring */
+    struct lock *lock_releasing;        /* Lock for releasing */
+    struct list locks_holding;          /* Locks being held */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -114,12 +114,6 @@ struct thread
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
-
-// extern struct list ready_list;
-extern int load_avg;
-// extern struct list fqs[64];
-extern int ready_threads_count;
-
 
 void thread_init (void);
 void thread_start (void);

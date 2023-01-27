@@ -72,7 +72,7 @@ static unsigned list_order;
 bool thread_mlfqs;
 
 /* global variable keeping track of load_avg */
-int load_avg = 0;
+static int load_avg = 0;
 
 static void kernel_thread(thread_func *, void *aux);
 
@@ -98,7 +98,7 @@ static int calculate_load_avg();
    general and it is possible in this case only because loader.S
    was careful to put the bottom of the stack at a page boundary.
 
-   Also initializes the run queue and the tid lock.
+   Also initializes the run queue, tid lock, ready_list, mlfqs list, and nice
 
    After calling this function, be sure to initialize the page
    allocator before trying to create any threads with
@@ -170,7 +170,10 @@ int recalculate_priorities(struct thread *cur, void *aux UNUSED)
 }
 
 /* Called by the timer interrupt handler at each timer tick.
-   Thus, this function runs in an external interrupt context. */
+   Thus, this function runs in an external interrupt context.
+   Upon every tick increments recent_cpu by 1
+   Upon every 100 ticks/1 second recalculate load_avg and recent_cpu for all threads  
+   Upon every 4 ticks recalculate priorities*/
 void thread_tick(void)
 {
   struct thread *t = thread_current();
@@ -430,13 +433,12 @@ void thread_foreach(thread_action_func *func, void *aux)
   }
 }
 
-/* Sets the current thread's priority to NEW_PRIORITY. */
+/* Sets the current thread's priority to NEW_PRIORITY. If advanced scheduler does nothing*/
 void thread_set_priority(int new_priority)
 {
   if (thread_mlfqs)
     return;
   thread_current()->priority = new_priority;
-  // thread_current()->fifo_ordering = timer_ticks();
   if (!list_empty(&ready_list))
   {
     struct thread *next = list_entry(list_max(&ready_list, thread_priority_less_than, NULL), struct thread, elem);
@@ -451,7 +453,8 @@ int thread_get_priority(void)
   return get_thread_priority(thread_current());
 }
 
-/* Returns a given thread's highest priority between priority and donated priority. */
+/* Returns a given thread's highest priority between priority and donated priority. 
+If advanced scheduler return current_thread priority*/
 int get_thread_priority(struct thread *t) {
   if (thread_mlfqs || list_empty(&t->locks_holding))
     return t->priority;
@@ -630,7 +633,8 @@ alloc_frame(struct thread *t, size_t size)
 
 /* Chooses and returns the next thread to be scheduled.  Should
    return a thread from the run queue, unless the run queue is
-   empty.  (If the running thread can continue running, then it
+   empty.  If advanced scheduler starts by checking highest priority
+   queues and goes down. (If the running thread can continue running, then it
    will be in the run queue.)  If the run queue is empty, return
    idle_thread. */
 static struct thread *

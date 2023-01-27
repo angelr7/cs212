@@ -154,23 +154,39 @@ every OS tick.
 >> scheduling decision and the priority and recent_cpu values for each
 >> thread after each given number of timer ticks:
 
+This is assuming that the PRI_MAX is equal to 63.
+
 timer  recent_cpu    priority   thread
 ticks   A   B   C   A   B   C   to run
 -----  --  --  --  --  --  --   ------
- 0
- 4
- 8
-12
-16
-20
-24
-28
-32
-36
+ 0     0   0   0   63  61  59     A
+ 4     4   0   0   62  61  59     A
+ 8     8   0   0   61  61  59     B
+12     8   4   0   61  60  59     A
+16     12  4   0   60  60  59     B
+20     12  8   0   60  59  59     A
+24     16  8   0   59  59  59     C 
+28     16  8   4   59  59  58     B
+32     16  12  4   59  58  58     A
+36     20  12  4   58  58  58     C
 
 >> C3: Did any ambiguities in the scheduler specification make values
 >> in the table uncertain?  If so, what rule did you use to resolve
 >> them?  Does this match the behavior of your scheduler?
+
+The problem above does not specify the behavior of the scheduler when two 
+or more threads have the same priority. In this case, I chose to run threads
+with the same priority on a round-robin basis. This is exactly what we chose
+to do in our real approach as well. 
+
+When it comes to calculating recent_cpu, priority, and load_avg, the order is
+not explicity specified in the project documentation. We first increment recent_cpu, 
+and then calculate the priority afterwards if necessary (we are at the thread's fourth 
+tick on the CPU). Although it isn't relevant for the problem above, we also must follow
+this process on the OS's 100th tick:
+    -- Increment recent_cpu for running thread
+    -- Calculate load_avg. This is done once, since load_avg isn't thread specific.
+    -- Recalculate recent_cpu and priority for all threads, respectively. 
 
 >> C4: How is the way you divided the cost of scheduling between code
 >> inside and outside interrupt context likely to affect performance?
@@ -181,6 +197,17 @@ ticks   A   B   C   A   B   C   to run
 >> disadvantages in your design choices.  If you were to have extra
 >> time to work on this part of the project, how might you choose to
 >> refine or improve your design?
+The advantages of our design lies in the memory optimizations that we made
+in our program. For example, we use thread_foreach to streamline the operations
+that we make when updating all threads. In addition, we supply a recent_cpu_changed
+boolean to the thread struct, which allows us to determine if we need to recalculate 
+its priority in a more lightweight manner (i.e. compared to a list).
+The cons of our design mostly pertains to the way that we handle recalculations related
+to thread priority. Although we tried to optimize using thread_foreach, we would be able
+to further optimize our search and updating process if we used a list of threads whose 
+recent_cpu was recalucated. If we were to have extra time, we would most likely spend it 
+trying to optmize this process, since we unnecessarily loop over all threads by using
+thread_foreach.
 
 >> C6: The assignment explains arithmetic for fixed-point math in
 >> detail, but it leaves it open to you to implement it.  Why did you

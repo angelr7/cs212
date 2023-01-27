@@ -3,17 +3,17 @@
 
 #include "threads/thread.h"
 
-uint32_t  int_to_fp(int n);
-int fp_to_int(uint32_t x);
-int fp_to_int_round_nearest(uint32_t x);
-uint32_t add_fp_to_fp(uint32_t x, uint32_t y);
-uint32_t subtract_fp_to_fp(uint32_t x, uint32_t y);
-uint32_t add_fp_to_int(uint32_t x, int n);
-uint32_t subtract_int_from_fp(uint32_t x, int n);
-uint32_t multiply_fp_by_fp(uint32_t x, uint32_t y);
-uint32_t multiply_fp_by_int(uint32_t x, int n);
-uint32_t divide_fp_by_fp(uint32_t x, uint32_t y);
-uint32_t divide_fp_by_int(uint32_t x, int n);
+int  int_to_fp(int n);
+int fp_to_int(int x);
+int fp_to_int_round_nearest(int x);
+int add_fp_to_fp(int x, int y);
+int subtract_fp_to_fp(int x, int y);
+int add_fp_to_int(int x, int n);
+int subtract_int_from_fp(int x, int n);
+int multiply_fp_by_fp(int x, int y);
+int multiply_fp_by_int(int x, int n);
+int divide_fp_by_fp(int x, int y);
+int divide_fp_by_int(int x, int n);
 
 
 #endif /* threads/fixed-point.h */

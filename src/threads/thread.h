@@ -91,7 +91,6 @@ struct thread
     unsigned fifo_ordering;             /* Fifo Ordering. */
     int nice;                           /* Nice. */
     int recent_cpu;                     /* Recent_cpu. */
-    struct list_elem recent_cpu_elem;   /* Recent cpu elem */
     bool recent_cpu_changed;            /* Recent cpu changed */
     struct list_elem allelem;           /* List element for all threads list. */
     struct lock *lock_acquiring;        /* Lock for acquiring */

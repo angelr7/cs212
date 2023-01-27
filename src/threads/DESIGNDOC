@@ -196,6 +196,25 @@ the lock that the thread is currently holding, prior to calling sema_up.
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+static struct list mlfq[64];
+    mlfq is the advanced scheduler's ready_list. It is an array of 64 
+    lists from priority 0-63 where the index i is that lists priority
+
+static int load_avg
+    loag_avg is a real number and global variable which holds the 
+    load_avg for the cpu
+
+struct thread
+{
+    int nice;                          
+    int recent_cpu;                    
+    bool recent_cpu_changed;   
+};
+    nice and recent_cpu hold that threads respective nice and recent_cpu 
+    values. recent_cpu_changed is a boolean which dictates if the value of
+    recent_cpu has been changed since priorities were last calculated
+
+
 ---- ALGORITHMS ----
 
 >> C2: Suppose threads A, B, and C have nice values 0, 1, and 2.  Each
@@ -229,16 +248,34 @@ with the same priority on a round-robin basis. This is exactly what we chose
 to do in our real approach as well. 
 
 When it comes to calculating recent_cpu, priority, and load_avg, the order is
-not explicity specified in the project documentation. We first increment recent_cpu, 
-and then calculate the priority afterwards if necessary (we are at the thread's fourth 
-tick on the CPU). Although it isn't relevant for the problem above, we also must follow
-this process on the OS's 100th tick:
+not explicity specified in the project documentation. On the threads fourth tick
+we first increment recent_cpu, and then calculate the priority afterwards if necessary.
+Although it isn't relevant for the problem above, we also must follow
+this process on the OS's 100th tick in this order:
     -- Increment recent_cpu for running thread
     -- Calculate load_avg. This is done once, since load_avg isn't thread specific.
-    -- Recalculate recent_cpu and priority for all threads, respectively. 
+    -- Recalculate recent_cpu for all threads
+    -- Recalculate priority for all threads where recent_cpu_changed == true
 
 >> C4: How is the way you divided the cost of scheduling between code
 >> inside and outside interrupt context likely to affect performance?
+
+The recalculations performed every 4 and 100 ticks are done within the
+interrupt context so it is important that they are done quickly to give 
+as much time for the process to run as possible. In the case that our 
+calculations in an interrupt context take too long we risk starving the 
+process by continuously interrupting. For that reason, we decomposed
+fixed-point to streamline all of the arithmetic for the compiler. We also minimize 
+what we declared and initialized in the interrupt context. This minimization is
+evident from our use and creation of functions such as thread_forEach, 
+recalculate_recent_cpu, recalculate_load_avg, recalculate_priorities, and
+recalculate_all_recent_cpus. 
+
+Our original implementation did not have streamlined arithmetic and did not 
+decompose and minimize declarations in the interrupt context. As a result, 
+we experienced lots of bugs and page faults which were fixed through our final 
+implementation. 
+
 
 ---- RATIONALE ----
 
@@ -246,6 +283,7 @@ this process on the OS's 100th tick:
 >> disadvantages in your design choices.  If you were to have extra
 >> time to work on this part of the project, how might you choose to
 >> refine or improve your design?
+
 The advantages of our design lies in the memory optimizations that we made
 in our program. For example, we use thread_foreach to streamline the operations
 that we make when updating all threads. In addition, we supply a recent_cpu_changed
@@ -266,16 +304,17 @@ thread_foreach.
 >> type and/or a set of functions or macros to manipulate fixed-point
 >> numbers, why did you do so?  If not, why not?
 
-We initially tried an approach without a fixed-point file and calculated all 
-the math in the calulate_load_avg, calculate_priority, and calculate_recent_cpu
-functions. We were running into bugs and found that creating a fixed point file
-made our thread code more readable, made it faster, and left less room for error
-in our calculations between fixed points. Also, we used the set of functions in
-fixed-point.c because there were other places where fixed pointer arithmetic was
-needed such as increamenting recent_cpu every tick and fp_to_int_round_nearest
-which was used in functions thread_get_load_avg and thread_get_recent_cpu. The
-multiple use of these functions made it a good candidate to put in a seperate file
-with function calls to not be rewritten. 
+Our initial approach was without a seperate fixed-point file. In this version we 
+calculated all fixed point math in the calulate_load_avg, calculate_priority, and 
+calculate_recent_cpu functions. We were running into bugs and found that creating a 
+fixed point file made our thread code more readable, made it faster, and left less 
+room for error in our calculations between fixed points. Also having functions for 
+all fixed point arithmetic seperate was better because these fixed point operations 
+were used in other locations as well. When increamenting recent_cpu every tick we 
+utilized add_fp_to_int. In thread_get_load_avg and thread_get_recent_cpu we utilized 
+fp_to_int_round_nearest. The multiple uses of these functions made seperating them
+into their own file the best solution.  
+
 
                SURVEY QUESTIONS
                ================

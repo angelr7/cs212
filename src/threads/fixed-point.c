@@ -20,6 +20,6 @@ int calculate_recent_cpu(struct thread *t)
 
 int calculate_load_avg(struct thread *t UNUSED)
 {   
-    // turn these into ints
-    return (((int64_t) (59*(2 << 14)/60))*load_avg/(2 << 14) + (1*(2 << 14)/60)*list_size(&ready_list))*100;
+    // not sure if i can do list_size of fqs
+    return (((int64_t) (59*(2 << 14)/60))*load_avg/(2 << 14) + (1*(2 << 14)/60)*list_size(&fqs))*100;
 }

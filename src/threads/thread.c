@@ -32,7 +32,6 @@ static struct list all_list;
 
 /* List of all ready processess where that index is its priority
 for example list at index 63 has priority 63 */
-static struct list fqs[64];
 
 static struct list recalculated_recent_cpus;
 
@@ -156,52 +155,52 @@ void thread_tick(void)
 
   /* Enforce preemption. */
 
-  if (thread_mlfqs)
-  {
-    /* if in advanced schedule increment current running thread every tick */
-    if(t != idle_thread)
-    // make sure this is correct 
-      t->recent_cpu+ 1*(2<<14);
-    enum intr_level old_level;
-    /* once a second disable interupts and recalculate load_avg and recent_cpu for all t */
-    if (timer_ticks() % TIMER_FREQ == 0)
-    {
-      old_level = intr_disable();
-      load_avg = calculate_load_avg(t);
-      for (struct list_elem *e = list_begin(&all_list); e != list_end(&all_list); e = e->next)
-        {
-          struct thread *cur = list_entry(e, struct thread, allelem);      
-          int old_cpu = cur->recent_cpu;
-          cur->recent_cpu = calculate_recent_cpu(cur);
-          if (old_cpu != cur->recent_cpu)
-          {
-            list_push_back(&recalculated_recent_cpus, &cur->recent_cpu_elem);
-          }
-        }
-      intr_set_level(old_level);
-    }
-    if (timer_ticks() % TIME_SLICE == 0)
-      {
-        old_level = intr_disable();
-        /* go through each recalculated thread remove from recalculated list
-        and set its new priority in fqs */
-        for (struct list_elem *e = list_begin(&recalculated_recent_cpus); e != list_end(&recalculated_recent_cpus); e = e->next)
-        {
-          struct thread *cur = list_entry(e, struct thread, recent_cpu_elem);
-          list_remove(&cur->recent_cpu_elem);
-          int prev_priority = cur->priority;
-          cur->priority = calculate_priority(cur);
-          // recalculate all priority but if thread is ready we remove from ready list and insert to correct spot 
-          if (prev_priority != cur->priority && cur->status == THREAD_READY && cur != idle_thread)
-          {
-            list_remove(&cur->elem);
-            list_push_back(&fqs[cur->priority],&cur->elem);
-          }
-        intr_set_level(old_level);
-        }
-        thread_yield();
-      }
-  }
+  // if (thread_mlfqs)
+  // {
+  //   /* if in advanced schedule increment current running thread every tick */
+  //   if(t != idle_thread)
+  //   // make sure this is correct 
+  //     t->recent_cpu+ 1*(2<<14);
+  //   enum intr_level old_level;
+  //   /* once a second disable interupts and recalculate load_avg and recent_cpu for all t */
+  //   if (timer_ticks() % TIMER_FREQ == 0)
+  //   {
+  //     old_level = intr_disable();
+  //     load_avg = calculate_load_avg(t);
+  //     for (struct list_elem *e = list_begin(&all_list); e != list_end(&all_list); e = e->next)
+  //       {
+  //         struct thread *cur = list_entry(e, struct thread, allelem);      
+  //         int old_cpu = cur->recent_cpu;
+  //         cur->recent_cpu = calculate_recent_cpu(cur);
+  //         if (old_cpu != cur->recent_cpu)
+  //         {
+  //           list_push_back(&recalculated_recent_cpus, &cur->recent_cpu_elem);
+  //         }
+  //       }
+  //     intr_set_level(old_level);
+  //   }
+  //   if (timer_ticks() % TIME_SLICE == 0)
+  //     {
+  //       old_level = intr_disable();
+  //       /* go through each recalculated thread remove from recalculated list
+  //       and set its new priority in fqs */
+  //       for (struct list_elem *e = list_begin(&recalculated_recent_cpus); e != list_end(&recalculated_recent_cpus); e = e->next)
+  //       {
+  //         struct thread *cur = list_entry(e, struct thread, recent_cpu_elem);
+  //         list_remove(&cur->recent_cpu_elem);
+  //         int prev_priority = cur->priority;
+  //         cur->priority = calculate_priority(cur);
+  //         // recalculate all priority but if thread is ready we remove from ready list and insert to correct spot 
+  //         if (prev_priority != cur->priority && cur->status == THREAD_READY && cur != idle_thread)
+  //         {
+  //           list_remove(&cur->elem);
+  //           list_push_back(&fqs[cur->priority],&cur->elem);
+  //         }
+  //       intr_set_level(old_level);
+  //       }
+  //       thread_yield();
+  //     }
+  // }
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return();
 }
@@ -602,20 +601,20 @@ alloc_frame(struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run(void)
 {
-  if (thread_mlfqs)
-  {
-    for (int i = 63; i <= 0; i--) 
-    {
-      if (!list_empty(&fqs[i]))
-      {
-        struct thread *next_to_run = list_entry(list_pop_front(&fqs[i]), struct thread, elem);
-        return next_to_run;
-      }
-    }
-    return idle_thread;
-  }
-  else
-  {
+  // if (thread_mlfqs)
+  // {
+  //   for (int i = 63; i <= 0; i--) 
+  //   {
+  //     if (!list_empty(&fqs[i]))
+  //     {
+  //       struct thread *next_to_run = list_entry(list_pop_front(&fqs[i]), struct thread, elem);
+  //       return next_to_run;
+  //     }
+  //   }
+  //   return idle_thread;
+  // }
+  // else
+  // {
     if (list_empty(&ready_list))
       return idle_thread;
     else
@@ -624,7 +623,7 @@ next_thread_to_run(void)
       list_remove(&next_to_run->elem);
       return next_to_run;
     }
-  }
+  // }
   
 }
 

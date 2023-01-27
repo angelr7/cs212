@@ -115,6 +115,8 @@ extern bool thread_mlfqs;
 
 static struct list ready_list;
 static int load_avg;
+static struct list fqs[64];
+
 
 void thread_init (void);
 void thread_start (void);

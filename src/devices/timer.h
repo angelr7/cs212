@@ -9,14 +9,13 @@
 /* Number of timer interrupts per second. */
 #define TIMER_FREQ 100
 
-static struct list tick_list;
-struct tick_list_item {
-    int64_t ticks;
-    struct thread *thread_ref;
-    struct list_elem elem;
-};
+// struct tick_list_item {
+//     int64_t ticks;
+//     struct thread *thread_ref;
+//     struct list_elem elem;
+// };
 
-bool less_than(const struct list_elem *a, const struct list_elem *b, void *aux);
+// bool less_than(const struct list_elem *a, const struct list_elem *b, void *aux);
 
 void timer_init(void);
 void timer_calibrate(void);

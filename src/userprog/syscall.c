@@ -1,14 +1,16 @@
 #include "userprog/syscall.h"
+#include "userprog/pagedir.h"
 #include <stdio.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
 
 typedef int pid_t;
 
 static void syscall_handler (struct intr_frame *);
 static void halt (void) NO_RETURN;
-static void exit (int status, struct intr_frame *f) NO_RETURN;
+static void exit_handler (int status, struct intr_frame *f) NO_RETURN;
 static pid_t exec (const char *file);
 static int wait (pid_t pid_t);
 static bool create (const char *file, unsigned initial_size);
@@ -31,9 +33,9 @@ static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
   uint32_t syscall_num = *(uint32_t*)f->esp;
-  uint32_t arg1;
-  uint32_t arg2;
-  uint32_t arg3;
+  uint32_t arg1 = 0;
+  uint32_t arg2 = 0;
+  uint32_t arg3 = 0;
 
   // initialize arguments
   if (syscall_num != SYS_HALT)
@@ -51,7 +53,7 @@ syscall_handler (struct intr_frame *f UNUSED)
       halt();
       break;
     case SYS_EXIT:
-      exit((int) arg1, f);
+      exit_handler((int) arg1, f);
       break;
     case SYS_EXEC:
       exec((const char*) arg1);
@@ -93,13 +95,41 @@ syscall_handler (struct intr_frame *f UNUSED)
 }
 
 static void
+free_resources(void)
+{
+  // free locks and close file descriptors
+  return;
+}
+
+static void
+verify_pointer(const void *pointer)
+{
+  if (pointer == NULL || is_kernel_vaddr(pointer))
+  {
+    // print exit message
+    free_resources();
+    thread_exit();
+  }
+  if (is_user_vaddr(pointer))
+  {
+    uint32_t *pd = thread_current()->pagedir;
+    if (pagedir_get_page(pd, pointer) == NULL)
+    {
+      // print exit message
+      free_resources();
+      thread_exit();
+    }
+  }
+}
+
+static void
 halt(void)
 {
 
 }
 
 static void
-exit(int status, struct intr_frame *f)
+exit_handler(int status, struct intr_frame *f)
 {
   f->eax = status;
   thread_exit();
@@ -108,30 +138,35 @@ exit(int status, struct intr_frame *f)
 static pid_t
 exec(const char *file)
 {
+  verify_pointer((void *) file);
   return -1;
 }
 
 static int
 wait(pid_t pid)
 {
+  while (true)
   return -1;
 }
 
 static bool
 create(const char *file, unsigned initial_size)
 {
+  verify_pointer((void *) file);
   return false;
 }
 
 static bool
 remove(const char *file)
 {
+  verify_pointer((void *) file);
   return false;
 }
 
 static int
 open (const char *file)
 {
+  verify_pointer((void *) file);
   return -1;
 }
 
@@ -144,13 +179,22 @@ filesize (int fd)
 static int
 read (int fd, void *buffer, unsigned length)
 {
+  verify_pointer(buffer);
   return -1;
 }
 
 static int
 write (int fd, const void *buffer, unsigned length)
 {
-  return -1;
+  verify_pointer(buffer);
+  if (fd == 1)
+  {
+    putbuf(buffer, length);
+    return length;
+  }
+  int written = 0;
+  // TODO: write to file as much as we can
+  return written;
 }
 
 static void

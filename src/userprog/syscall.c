@@ -11,16 +11,28 @@ typedef int pid_t;
 static void syscall_handler (struct intr_frame *);
 static void halt (void) NO_RETURN;
 static void exit_handler (int status, struct intr_frame *f) NO_RETURN;
-static pid_t exec (const char *file);
-static int wait (pid_t pid_t);
-static bool create (const char *file, unsigned initial_size);
-static bool remove (const char *file);
-static int open (const char *file);
-static int filesize (int fd);
-static int read (int fd, void *buffer, unsigned length);
-static int write (int fd, const void *buffer, unsigned length);
+// static pid_t exec (const char *file);
+// static int wait (pid_t pid_t);
+// static bool create (const char *file, unsigned initial_size);
+// static bool remove (const char *file);
+// static int open (const char *file);
+// static int filesize (int fd);
+// static int read (int fd, void *buffer, unsigned length);
+// static int write (int fd, const void *buffer, unsigned length);
+// static void seek (int fd, unsigned position);
+// static unsigned tell (int fd);
+// static void close (int fd);
+
+static void exec (const char *file);
+static void wait (pid_t pid_t);
+static void create (const char *file, unsigned initial_size);
+static void remove (const char *file);
+static void open (const char *file);
+static void filesize (int fd);
+static void read (int fd, void *buffer, unsigned length);
+static void write (int fd, const void *buffer, unsigned int length, struct intr_frame *f);
 static void seek (int fd, unsigned position);
-static unsigned tell (int fd);
+static void tell (int fd);
 static void close (int fd);
 
 void
@@ -39,12 +51,12 @@ syscall_handler (struct intr_frame *f UNUSED)
 
   // initialize arguments
   if (syscall_num != SYS_HALT)
-    arg1 = *(uint32_t*)(f->esp + 1);
+    arg1 = *(uint32_t*)(f->esp + 4);
   if (syscall_num == SYS_CREATE || syscall_num == SYS_READ 
       || syscall_num == SYS_WRITE || syscall_num == SYS_SEEK)
-    arg2 = *(uint32_t*)(f->esp + 2);
+    arg2 = *(uint32_t*)(f->esp + 8);
   if (syscall_num == SYS_READ || syscall_num == SYS_WRITE)
-    arg3 = *(uint32_t*)(f->esp + 3);
+    arg3 = *(uint32_t*)(f->esp + 12);
 
   // call syscall function
   switch (syscall_num)
@@ -77,7 +89,7 @@ syscall_handler (struct intr_frame *f UNUSED)
       read((int) arg1, (void *) arg2, (unsigned int) arg3);
       break;
     case SYS_WRITE:
-      write((int) arg1, (const void *) arg2, (unsigned int) arg3);
+      write((int) arg1, (const void *) arg2, (unsigned int) arg3, f);
       break;
     case SYS_SEEK:
       seek((int) arg1, (unsigned int) arg2);
@@ -131,70 +143,69 @@ halt(void)
 static void
 exit_handler(int status, struct intr_frame *f)
 {
+  printf("exiting\n");
   f->eax = status;
   thread_exit();
 }
 
-static pid_t
+static void
 exec(const char *file)
 {
   verify_pointer((void *) file);
-  return -1;
 }
 
-static int
+static void
 wait(pid_t pid)
 {
-  while (true)
-  return -1;
+  int i = 0;
+  while (1)
+  {
+    i++;
+  }
 }
 
-static bool
+static void
 create(const char *file, unsigned initial_size)
 {
   verify_pointer((void *) file);
-  return false;
 }
 
-static bool
+static void
 remove(const char *file)
 {
   verify_pointer((void *) file);
-  return false;
 }
 
-static int
+static void
 open (const char *file)
 {
   verify_pointer((void *) file);
-  return -1;
 }
 
-static int
+static void
 filesize (int fd)
 {
-  return -1;
 }
 
-static int
+static void
 read (int fd, void *buffer, unsigned length)
 {
   verify_pointer(buffer);
-  return -1;
 }
 
-static int
-write (int fd, const void *buffer, unsigned length)
+static void
+write (int fd, const void *buffer, unsigned int length, struct intr_frame *f)
 {
   verify_pointer(buffer);
   if (fd == 1)
   {
     putbuf(buffer, length);
-    return length;
+    f->eax = length;
+    return;
   }
   int written = 0;
   // TODO: write to file as much as we can
-  return written;
+  
 }
 
 static void
@@ -203,10 +214,10 @@ seek (int fd, unsigned position)
 
 }
 
-static unsigned
+static void
 tell (int fd)
 {
-  return 0;
+  
 }
 
 static void

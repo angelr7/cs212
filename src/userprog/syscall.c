@@ -103,7 +103,6 @@ syscall_handler (struct intr_frame *f UNUSED)
     }
 
   printf ("system call: %d!\n", syscall_num);
-  thread_exit ();
 }
 
 static void
@@ -205,7 +204,7 @@ write (int fd, const void *buffer, unsigned int length, struct intr_frame *f)
   }
   int written = 0;
   // TODO: write to file as much as we can
-  
+  f->eax = written;
 }
 
 static void

@@ -107,10 +107,11 @@ struct thread
 #ifdef USERPROG
    /* Owned by userprog/process.c. */
    uint32_t *pagedir; /* Page directory. */
+#endif
+
    struct list children;
    struct thread *parent;
    struct semaphore wait_semaphore;
-#endif
 
    /* Owned by thread.c. */
    unsigned magic; /* Detects stack overflow. */

@@ -141,7 +141,7 @@ int process_wait(tid_t child_tid)
   for (
       struct list_elem *e = list_begin(&t->children);
       e != list_end(&t->children);
-      e = e->next)
+      e = list_next(e))
   {
     struct child_process *child = list_entry(e, struct child_process, elem);
     if (child->tid == child_tid)

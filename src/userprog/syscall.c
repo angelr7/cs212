@@ -143,11 +143,14 @@ exit_handler(int status, struct intr_frame *f)
   for (
       struct list_elem *e = list_begin(&siblings);
       e != list_end(&siblings);
-      e = e->next)
+      e = list_next(e))
   {
     struct child_process *child = list_entry(e, struct child_process, elem);
     if (child->tid == t->tid)
+    {
       child->status = status;
+      break;
+    }
   }
 
   sema_up(&t->parent->wait_semaphore);

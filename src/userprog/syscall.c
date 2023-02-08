@@ -45,6 +45,7 @@ static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
   uint32_t syscall_num = *(uint32_t*)f->esp;
+  // printf ("system call: %d!\n", syscall_num);
   uint32_t arg1 = 0;
   uint32_t arg2 = 0;
   uint32_t arg3 = 0;
@@ -102,7 +103,6 @@ syscall_handler (struct intr_frame *f UNUSED)
       break;
     }
 
-  printf ("system call: %d!\n", syscall_num);
 }
 
 static void

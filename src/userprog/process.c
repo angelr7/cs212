@@ -252,25 +252,13 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
    Returns true if successful, false otherwise. */
 bool load(const char *file_name, void (**eip)(void), void **esp)
 {
-  // char *file_name_copy;
-  // file_name_copy = palloc_get_page(0);
-  // strlcpy(file_name_copy, file_name, PGSIZE);
-
-  // int argc = get_number_of_args(file_name_copy);
-  // char *argv[argc];
-
-  // char *token, *save_ptr;
-  // int index = 0;
-  // for (token = strtok_r(file_name_copy, " ", &save_ptr); token != NULL;
-  //      token = strtok_r(NULL, " ", &save_ptr))
-  //   argv[index++] = token;
-
-  // palloc_free_page(file_name_copy);
-
-  // struct process_arguments args;
-  // args.argv = argv;
-  // args.argc = argc;
-  // args.filename = file_name_copy;
+  // extract file name from command line input
+  int len = strlen(file_name);
+  char file_name_copy[len + 1];
+  strlcpy(file_name_copy, file_name, len + 1);
+  char *token, *save_ptr;
+  token = strtok_r(file_name_copy, " ", &save_ptr);
+  char *extracted_file_name = token;
 
   struct thread *t = thread_current();
   struct Elf32_Ehdr ehdr;
@@ -286,17 +274,17 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
   process_activate();
 
   /* Open executable file. */
-  file = filesys_open(file_name);
+  file = filesys_open(extracted_file_name);
   if (file == NULL)
   {
-    printf("load: %s: open failed\n", file_name);
+    printf("load: %s: open failed\n", extracted_file_name);
     goto done;
   }
 
   /* Read and verify executable header. */
   if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr || memcmp(ehdr.e_ident, "\177ELF\1\1\1", 7) || ehdr.e_type != 2 || ehdr.e_machine != 3 || ehdr.e_version != 1 || ehdr.e_phentsize != sizeof(struct Elf32_Phdr) || ehdr.e_phnum > 1024)
   {
-    printf("load: %s: error loading executable\n", file_name);
+    printf("load: %s: error loading executable\n", extracted_file_name);
     goto done;
   }
 
@@ -496,77 +484,79 @@ setup_stack(void **esp, const char *cmdline)
     if (success)
     {
       *esp = PHYS_BASE;
-
-      /* We want to go from back to front. to do this, we need to get the string
-         length and go backwards through the string. */
-      int i = strlen(cmdline);
-
-      /* From the assignment description: "There is an unrelated limit of 128 bytes
-         on command-line arguments that the pintos utility can pass to the kernel."
-
-         For this reason, we limit the size of argv to be limited to 128 entries, because this
-         holds, at the very least, the MAXIMUM amount of bytes that pintos can pass to the kernel.
-      */
+      
       char *argv[128];
       int argc = 0;
 
-      bool end = true;
-      while (--i > 0)
+      // calculate the total number of characters to push and argc value from cmdline input
+      int len = strlen(cmdline);
+      int chars_to_push = 0;
+      for (int i = 0; i < len; i++)
       {
-        if (cmdline[i] == ' ')
+        if (cmdline[i] != ' ')
         {
-          end = true;
-          continue;
+          chars_to_push++;
+          if (i == len - 1 && cmdline[i] != ' ')
+          {
+            chars_to_push++;
+            argc++;
+          }
         }
-
-        /* Make sure to punctuate here, before continuing on with the rest of the letters. If we get
-           to a non-space character, this makes sure that we write all necessary null terminators before
-           we write the last letter of a word in the cmdline string. */
-        if (end)
+        else if (i > 0 && cmdline[i - 1] != ' ')
         {
-          end = false;
-
-          /* Add a word to argv, and then set the next value to \0. This essentailly null-terminates argv
-             when this is called for the first time. */
-          argv[argc++] = (char *)(((uintptr_t)(*esp)) % ((uintptr_t)PHYS_BASE));
-          *((char *)(--(*esp))) = '\0';
+          chars_to_push++;
+          argc++;
         }
-
-        /* Place non-whitespace character at this index into the next byte of the stack */
-        *((char *)(--(*esp))) = cmdline[i];
       }
 
-      /* Add the last word into our argv array, this is complete once the loop is exited, b/c we've gone
-         through all letters in the cmdline string. */
-      argv[argc++] = (char *)(((uintptr_t)(*esp)) % ((uintptr_t)PHYS_BASE));
+      void *esp_string_start = *esp - chars_to_push;
+      *esp = esp_string_start;
+
+      // tokenize cmdline input and push onto stack
+      int i = 0;
+      char cmdline_copy[len + 1];
+      strlcpy(cmdline_copy, cmdline, len + 1);
+      char *token, *save_ptr;
+      for (token = strtok_r (cmdline_copy, " ", &save_ptr); token != NULL;
+            token = strtok_r (NULL, " ", &save_ptr))
+      {
+        int arg_len = strlen(token);
+        strlcpy(*esp, token, arg_len + 1);
+        argv[i++] = *esp;
+        *esp += arg_len + 1;
+      }
+
+      *esp = esp_string_start;
 
       /* This maintains a byte alignment of four in our stack frames, so that our calculations are
          easier for the system to compute. */
-      while ((PHYS_BASE - *esp) % 4 != 0)
+      while ((int)*esp % 4 != 0)
         *((char *)(--(*esp))) = '\0';
 
-      /* For each argument, decrement esp accordingly and put the pointer for the current
-         argument in that spot. */
-      for (i = 0; i < argc; i++)
+      int bytes_to_push = sizeof(void *) * (argc + 4);
+      void *esp_return_start = *esp - bytes_to_push;
+      *esp = esp_return_start;
+
+      // set return address to 0
+      *((int *)*esp) = 0;
+      *esp += sizeof(int);
+      // set argc
+      *((int *)*esp) = argc;
+      *esp += sizeof(int);
+      // set argv
+      *((char **)*esp) = (char *)*esp + sizeof(char *);
+      *esp += sizeof(char *);
+      // set argv addresses
+      for (int i = 0; i < argc; i++)
       {
-        *esp -= sizeof(int);
-        *((int *)esp) = (int)argv[i];
+        *((char **)*esp) = argv[i];
+        *esp += sizeof(char *);
       }
+      // set null sentinel
+      *((char **)*esp) = NULL;
 
-      /*
-        add the memory addresses of argc, argv, and a dummy address for rax/eax.
-        by casting our char *'s into an int, we essentially push that pointer's numerical value
-        (location) on the stack.
-      */
-
-      int argv_addr = (int)(*esp);  // get the actual address
-      *esp = *esp - sizeof(int);    // offset *esp by the size of that address
-      *((int *)(*esp)) = argv_addr; // fill the offset bytes with the address value
-
-      *esp = *esp - sizeof(int);
-      *((int *)(*esp)) = argc - 1;
-      *esp = *esp - sizeof(int);
-      *((int *)(*esp)) = 0;
+      // set stack pointer to final location below return address
+      *esp = esp_return_start;
     }
     else
       palloc_free_page(kpage);

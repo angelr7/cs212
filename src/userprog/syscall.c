@@ -142,8 +142,10 @@ halt(void)
 static void
 exit_handler(int status, struct intr_frame *f)
 {
-  printf("exiting\n");
-  f->eax = status;
+  // set the parent thread's status here
+  // -----------------------------------
+
+  printf("%s: exit(%d)\n", thread_current()->name, status);
   thread_exit();
 }
 

@@ -142,10 +142,23 @@ halt(void)
 static void
 exit_handler(int status, struct intr_frame *f)
 {
-  // set the parent thread's status here
-  // -----------------------------------
+  struct thread *t = thread_current();
 
-  printf("%s: exit(%d)\n", thread_current()->name, status);
+  // find the current child in the parent's list and update
+  // the status
+  struct list siblings = t->parent->children;
+  for (
+    struct list_elem *e = list_begin(&siblings);
+    e != list_end(&siblings);
+    e = e->next
+  ) {
+    struct child_process *child = list_entry(e, struct child_process, elem);
+    if (child->tid == t->tid) child->status = status;
+  }
+
+  sema_up(&t->parent->wait_semaphore);
+
+  printf("%s: exit(%d)\n", t->name, status);
   thread_exit();
 }
 

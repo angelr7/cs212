@@ -47,6 +47,14 @@ tid_t process_execute(const char *file_name)
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
+
+  /* Set the thread's values to support child processes */
+  struct child_process child;
+  child.tid = tid;
+  child.status = -1;
+  child.wait_called = false;
+  list_push_back(&thread_current()->children, &child.elem);
+
   if (tid == TID_ERROR)
     palloc_free_page(fn_copy);
   return tid;
@@ -93,8 +101,6 @@ start_process(void *file_name_)
   bool success;
   char *file_name = file_name_;
 
-  thread_current()->process_thread = true;
-
   /* Initialize interrupt frame and load executable. */
   memset(&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -129,11 +135,29 @@ start_process(void *file_name_)
 
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
-int process_wait(tid_t child_tid UNUSED)
+int process_wait(tid_t child_tid)
 {
-  while (true)
+  struct thread *t = thread_current();
+  for (
+      struct list_elem *e = list_begin(&t->children);
+      e != list_end(&t->children);
+      e = e->next)
   {
-    ;
+    struct child_process *child = list_entry(e, struct child_process, elem);
+    if (child->tid == child_tid)
+    {
+      if (child->wait_called)
+        return -1;
+
+      if (child->status != -1)
+        return child->status;
+
+      else
+      {
+        sema_down(&t->wait_semaphore);
+        return child->status;
+      }
+    }
   }
   return -1;
 }
@@ -484,7 +508,7 @@ setup_stack(void **esp, const char *cmdline)
     if (success)
     {
       *esp = PHYS_BASE;
-      
+
       char *argv[128];
       int argc = 0;
 
@@ -517,8 +541,8 @@ setup_stack(void **esp, const char *cmdline)
       char cmdline_copy[len + 1];
       strlcpy(cmdline_copy, cmdline, len + 1);
       char *token, *save_ptr;
-      for (token = strtok_r (cmdline_copy, " ", &save_ptr); token != NULL;
-            token = strtok_r (NULL, " ", &save_ptr))
+      for (token = strtok_r(cmdline_copy, " ", &save_ptr); token != NULL;
+           token = strtok_r(NULL, " ", &save_ptr))
       {
         int arg_len = strlen(token);
         strlcpy(*esp, token, arg_len + 1);

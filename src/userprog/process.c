@@ -131,6 +131,10 @@ start_process(void *file_name_)
    does nothing. */
 int process_wait(tid_t child_tid UNUSED)
 {
+  while (true)
+  {
+    ;
+  }
   return -1;
 }
 
@@ -497,7 +501,7 @@ setup_stack(void **esp, const char *cmdline)
          length and go backwards through the string. */
       int i = strlen(cmdline);
 
-      /* From the assignment description: "There is an unrelated limit of 128 bytes 
+      /* From the assignment description: "There is an unrelated limit of 128 bytes
          on command-line arguments that the pintos utility can pass to the kernel."
 
          For this reason, we limit the size of argv to be limited to 128 entries, because this
@@ -505,54 +509,64 @@ setup_stack(void **esp, const char *cmdline)
       */
       char *argv[128];
       int argc = 0;
-      
-      /* Whether we're at the end of a word or not. We start at the end of the string, so this is 
-         initialized to true.
-      */
-      bool end = true; 
-      while (--i > 0) {
-        if (cmdline[i] == ' ') continue;
+
+      bool end = true;
+      while (--i > 0)
+      {
+        if (cmdline[i] == ' ')
+        {
+          end = true;
+          continue;
+        }
 
         /* Make sure to punctuate here, before continuing on with the rest of the letters. If we get
            to a non-space character, this makes sure that we write all necessary null terminators before
            we write the last letter of a word in the cmdline string. */
-        if (end) {
+        if (end)
+        {
           end = false;
-          
-          /* Add a word to argv, and then set the next value to \0. This essentailly null-terminates argv 
+
+          /* Add a word to argv, and then set the next value to \0. This essentailly null-terminates argv
              when this is called for the first time. */
-          argv[argc++] = (void *)(((uintptr_t)(*esp)) % ((uintptr_t)PHYS_BASE));
-          *((char*)(--(*esp))) = '\0';
+          argv[argc++] = (char *)(((uintptr_t)(*esp)) % ((uintptr_t)PHYS_BASE));
+          *((char *)(--(*esp))) = '\0';
         }
 
         /* Place non-whitespace character at this index into the next byte of the stack */
-        *((char*)(--(*esp))) = cmdline[i];
+        *((char *)(--(*esp))) = cmdline[i];
       }
 
-      /* Add the last word into our argv array, this is complete once the loop is exited, b/c we've gone 
+      /* Add the last word into our argv array, this is complete once the loop is exited, b/c we've gone
          through all letters in the cmdline string. */
-      argv[argc++] = (void *)(((uintptr_t)(*esp)) % ((uintptr_t)PHYS_BASE));
+      argv[argc++] = (char *)(((uintptr_t)(*esp)) % ((uintptr_t)PHYS_BASE));
 
-      /* This maintains a byte alignment of four in our stack frames, so that our calculations are 
+      /* This maintains a byte alignment of four in our stack frames, so that our calculations are
          easier for the system to compute. */
       while ((PHYS_BASE - *esp) % 4 != 0)
-          *((char*)(--(*esp))) = '\0';
+        *((char *)(--(*esp))) = '\0';
 
-      /* For each argument, decrement esp accordingly and put the pointer for the current 
+      /* For each argument, decrement esp accordingly and put the pointer for the current
          argument in that spot. */
-      for (i = 0; i < argc; i++) {
+      for (i = 0; i < argc; i++)
+      {
         *esp -= sizeof(int);
         *((int *)esp) = (int)argv[i];
       }
 
-      /* add the memory addresses of argc, argv, and a dummy address for rax/eax */
-      int argv_addr = (int)(*esp);
+      /*
+        add the memory addresses of argc, argv, and a dummy address for rax/eax.
+        by casting our char *'s into an int, we essentially push that pointer's numerical value
+        (location) on the stack.
+      */
+
+      int argv_addr = (int)(*esp);  // get the actual address
+      *esp = *esp - sizeof(int);    // offset *esp by the size of that address
+      *((int *)(*esp)) = argv_addr; // fill the offset bytes with the address value
+
       *esp = *esp - sizeof(int);
-      *((int *)(*esp)) = argv_addr;
+      *((int *)(*esp)) = argc - 1;
       *esp = *esp - sizeof(int);
-      *((int*)(*esp)) = argc - 1;
-      *esp = *esp - sizeof(int);
-      *((int*)(*esp)) = 0;
+      *((int *)(*esp)) = 0;
     }
     else
       palloc_free_page(kpage);
@@ -563,12 +577,7 @@ setup_stack(void **esp, const char *cmdline)
 /* Adds a mapping from user virtual address UPAGE to kernel
    virtual address KPAGE to the page table.
    If WRITABLE is true, the user process may modify the page;
-   otherwise, it is read-only.
-   UPAGE must not already be mapped.
-   KPAGE should probably be a page obtained from the user pool
-   with palloc_get_page().
-   Returns true on success, false if UPAGE is already mapped or
-   if memory allocation fails. */
+   otherwise, it is read-only. */
 static bool
 install_page(void *upage, void *kpage, bool writable)
 {

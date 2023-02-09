@@ -4,6 +4,7 @@
 #include "userprog/syscall.h"
 #include "userprog/pagedir.h"
 #include <stdio.h>
+#include <string.h>
 #include <syscall-nr.h>
 #include "userprog/process.h"
 #include "threads/interrupt.h"
@@ -18,7 +19,7 @@ static bool filesys_lock_initialized = false;
 
 
 static void syscall_handler(struct intr_frame *);
-static void verify_pointer(const void *pointer);
+static void verify_pointer(const void *pointer, int size);
 static void halt(void) NO_RETURN;
 static void exit_handler(int status) NO_RETURN;
 static void exec (const char *file, struct intr_frame *f);
@@ -49,13 +50,14 @@ syscall_init (void)
 static void
 syscall_handler(struct intr_frame *f)
 {
-  verify_pointer(f->esp);
+  // verify_pointer(f, sizeof(struct intr_frame));
   if (!filesys_lock_initialized)
   {
     lock_init(&filesys_lock);
     filesys_lock_initialized = true;
   }
 
+  verify_pointer(f->esp, sizeof(uint32_t));
   uint32_t syscall_num = *(uint32_t *)f->esp;
   // printf ("system call: %d!\n", syscall_num);
   uint32_t arg1 = 0;
@@ -64,11 +66,20 @@ syscall_handler(struct intr_frame *f)
 
   // initialize arguments
   if (syscall_num != SYS_HALT)
+  {
+    verify_pointer(f->esp + 4, sizeof(uint32_t));
     arg1 = *(uint32_t *)(f->esp + 4);
+  }
   if (syscall_num == SYS_CREATE || syscall_num == SYS_READ || syscall_num == SYS_WRITE || syscall_num == SYS_SEEK)
+  {
+    verify_pointer(f->esp + 8, sizeof(uint32_t));
     arg2 = *(uint32_t *)(f->esp + 8);
+  }
   if (syscall_num == SYS_READ || syscall_num == SYS_WRITE)
+  {
+    verify_pointer(f->esp + 8, sizeof(uint32_t));
     arg3 = *(uint32_t *)(f->esp + 12);
+  }
 
   // call syscall function
   switch (syscall_num)
@@ -140,16 +151,17 @@ list_find_fd_elem(struct thread *t, int fd)
 }
 
 static void
-verify_pointer(const void *pointer)
+verify_pointer(const void *pointer, int size)
 {
-  if (pointer == NULL || is_kernel_vaddr(pointer))
+  void *last_byte = (void *)((char *)pointer + (size - 1));
+  if (pointer == NULL || is_kernel_vaddr(pointer) || is_kernel_vaddr(last_byte))
   {
     exit_handler(-1);
   }
   if (is_user_vaddr(pointer))
   {
     uint32_t *pd = thread_current()->pagedir;
-    if (pagedir_get_page(pd, pointer) == NULL)
+    if (pagedir_get_page(pd, pointer) == NULL || pagedir_get_page(pd, last_byte) == NULL)
     {
       exit_handler(-1);
     }
@@ -196,7 +208,7 @@ exit_handler(int status)
 static void
 exec(const char *file, struct intr_frame *f)
 {
-  verify_pointer((void *) file);
+  verify_pointer((void *) file, sizeof(char *));
   f->eax = process_execute(file);
 }
 
@@ -209,7 +221,7 @@ wait(pid_t pid, struct intr_frame *f)
 static void
 create(const char *file, unsigned initial_size, struct intr_frame *f)
 {
-  verify_pointer((void *) file);
+  verify_pointer((void *) file, sizeof(char *));
   lock_acquire(&filesys_lock);
   bool success = filesys_create(file, initial_size);
   lock_release(&filesys_lock);
@@ -219,7 +231,7 @@ create(const char *file, unsigned initial_size, struct intr_frame *f)
 static void
 remove(const char *file, struct intr_frame *f)
 {
-  verify_pointer((void *) file);
+  verify_pointer((void *) file, sizeof(char *));
   lock_acquire(&filesys_lock);
   bool success = filesys_remove(file);
   lock_release(&filesys_lock);
@@ -229,7 +241,7 @@ remove(const char *file, struct intr_frame *f)
 static void
 open (const char *file, struct intr_frame *f)
 {
-  verify_pointer((void *) file);
+  verify_pointer((void *) file, sizeof(char *));
   lock_acquire(&filesys_lock);
   struct file *opened_file = filesys_open(file);
   lock_release(&filesys_lock);
@@ -267,7 +279,7 @@ filesize (int fd, struct intr_frame *f)
 static void
 read (int fd, void *buffer, unsigned length, struct intr_frame *f)
 {
-  verify_pointer(buffer);
+  verify_pointer(buffer, sizeof(void *));
   if (fd == 0)
   {
     for (unsigned i = 0; i < length; i++)
@@ -293,7 +305,7 @@ read (int fd, void *buffer, unsigned length, struct intr_frame *f)
 static void
 write(int fd, const void *buffer, unsigned int length, struct intr_frame *f)
 {
-  verify_pointer(buffer);
+  verify_pointer(buffer, sizeof(void *));
   if (fd == 1)
   {
     putbuf(buffer, length);

@@ -181,7 +181,7 @@ exit_handler(int status)
   uint32_t *pd;
   lock_acquire(&process_lock);
   struct list siblings = cur->parent->children;
-  if (!list_empty(&cur->parent->children))
+  if (!list_empty(&siblings))
   {
     for (
         struct list_elem *e = list_begin(&siblings);
@@ -198,7 +198,6 @@ exit_handler(int status)
         break;
       }
     }
-    // sema_up(&t->parent->wait_semaphore);
   }
   lock_release(&process_lock);
   printf("%s: exit(%d)\n", cur->exec_name, status);

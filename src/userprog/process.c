@@ -116,8 +116,8 @@ int process_wait(tid_t child_tid)
 {
   bool lock_released = false;
   struct thread *t = thread_current();
-  lock_acquire(&process_lock);
   if (list_empty(&t->children)) return -1;
+  lock_acquire(&process_lock);
   for (
       struct list_elem *e = list_begin(&t->children);
       e != list_end(&t->children);

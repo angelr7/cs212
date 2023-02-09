@@ -55,7 +55,9 @@ tid_t process_execute(const char *file_name)
   child.tid = tid;
   child.status = -1;
   child.wait_called = false;
+  lock_acquire(&process_lock);
   list_push_back(&thread_current()->children, &child.wait_elem);
+  lock_release(&process_lock);
 
   if (tid == TID_ERROR)
     palloc_free_page(fn_copy);

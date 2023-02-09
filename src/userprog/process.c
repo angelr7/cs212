@@ -18,6 +18,8 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
+
 
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, void (**eip)(void), void **esp);
@@ -47,40 +49,21 @@ tid_t process_execute(const char *file_name)
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
+
+  /* Set the thread's values to support child processes */
+  struct child_process child;
+  child.tid = tid;
+  child.status = -1;
+  child.wait_called = false;
+  lock_acquire(&process_lock);
+  list_push_back(&thread_current()->children, &child.wait_elem);
+  lock_release(&process_lock);
+
   if (tid == TID_ERROR)
     palloc_free_page(fn_copy);
   return tid;
 }
 
-int get_number_of_args(char *file_name)
-{
-  /* Go to the first non-whitespace. */
-  int i = 0;
-  while (*(file_name + i) != '\0' && *(file_name + i) == ' ')
-    i++;
-
-  /* If no characters are in the filename (i.e. just whitespace passed) */
-  if (*(file_name + i) == '\0')
-    return 0;
-
-  /* Find the word count of the command. */
-  int argc = 0;
-  bool in_space = false;
-  while (*(file_name + i) != '\0')
-  {
-    if (*(file_name + i) == ' ' && !in_space)
-    {
-      argc++;
-      in_space = true;
-    }
-    else if (*(file_name + i) != ' ' && in_space)
-      in_space = false;
-    i++;
-  }
-
-  /* If we end on whitespace, we've already accounted for the last word. */
-  return in_space ? argc : argc + 1;
-}
 
 /* A thread function that loads a user process and starts it
    running. */
@@ -92,8 +75,6 @@ start_process(void *file_name_)
   struct intr_frame if_;
   bool success;
   char *file_name = file_name_;
-
-  thread_current()->process_thread = true;
 
   /* Initialize interrupt frame and load executable. */
   memset(&if_, 0, sizeof if_);
@@ -129,12 +110,37 @@ start_process(void *file_name_)
 
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
-int process_wait(tid_t child_tid UNUSED)
+int process_wait(tid_t child_tid)
 {
-  while (true)
+  struct thread *t = thread_current();
+  if (list_empty(&t->children)) return -1;
+  lock_acquire(&process_lock);
+  for (
+      struct list_elem *e = list_begin(&t->children);
+      e != list_end(&t->children);
+      e = list_next(e))
   {
-    ;
+    struct child_process *child = list_entry(e, struct child_process, wait_elem);
+    if (child->tid == child_tid)
+    {
+      if (child->wait_called)
+        return -1;
+
+      if (child->status != -1)
+        return child->status;
+
+      else
+      {
+        while(child->status == -1) {
+          lock_acquire(&t->wait_lock);
+          cond_wait(&t->wait_cond, &t->wait_lock);
+          lock_release(&t->wait_lock);
+        }
+        return child->status;
+      }
+    }
   }
+  lock_release(&process_lock);
   return -1;
 }
 
@@ -143,7 +149,6 @@ void process_exit(void)
 {
   struct thread *cur = thread_current();
   uint32_t *pd;
-
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -484,7 +489,7 @@ setup_stack(void **esp, const char *cmdline)
     if (success)
     {
       *esp = PHYS_BASE;
-      
+
       char *argv[128];
       int argc = 0;
 
@@ -517,8 +522,8 @@ setup_stack(void **esp, const char *cmdline)
       char cmdline_copy[len + 1];
       strlcpy(cmdline_copy, cmdline, len + 1);
       char *token, *save_ptr;
-      for (token = strtok_r (cmdline_copy, " ", &save_ptr); token != NULL;
-            token = strtok_r (NULL, " ", &save_ptr))
+      for (token = strtok_r(cmdline_copy, " ", &save_ptr); token != NULL;
+           token = strtok_r(NULL, " ", &save_ptr))
       {
         int arg_len = strlen(token);
         strlcpy(*esp, token, arg_len + 1);

@@ -5,6 +5,7 @@
 #include "userprog/pagedir.h"
 #include <stdio.h>
 #include <syscall-nr.h>
+#include "userprog/process.h"
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
@@ -15,19 +16,30 @@ typedef int pid_t;
 static struct lock filesys_lock;
 static bool filesys_lock_initialized = false;
 
-static void syscall_handler (struct intr_frame *);
-static void halt (void) NO_RETURN;
-static void exit_handler (int status, struct intr_frame *f) NO_RETURN;
-// static pid_t exec (const char *file);
-// static int wait (pid_t pid_t);
-// static bool create (const char *file, unsigned initial_size);
-// static bool remove (const char *file);
-// static int open (const char *file);
-// static int filesize (int fd);
-// static int read (int fd, void *buffer, unsigned length);
-// static int write (int fd, const void *buffer, unsigned length);
+static struct lock filesys_lock;
+static bool filesys_lock_initialized = false;
+
+static void syscall_handler(struct intr_frame *);
+static void halt(void) NO_RETURN;
+static void exit_handler(int status, struct intr_frame *f) NO_RETURN;
+static int wait(pid_t pid_t);
+static bool create(const char *file, unsigned initial_size);
+static bool remove(const char *file);
+static int open(const char *file);
+static int filesize(int fd);
+static int read(int fd, void *buffer, unsigned length);
+static int write(int fd, const void *buffer, unsigned length, struct intr_frame *f);
+static void seek(int fd, unsigned position);
+static unsigned tell(int fd);
+static void close(int fd);
+
+static pid_t exec(const char *file);
+// static void open (const char *file);
+// static void filesize (int fd);
+// static void read (int fd, void *buffer, unsigned length);
+// static void write (int fd, const void *buffer, unsigned int length, struct intr_frame *f);
 // static void seek (int fd, unsigned position);
-// static unsigned tell (int fd);
+// static void tell (int fd);
 // static void close (int fd);
 
 static void exec (const char *file, struct intr_frame *f);
@@ -52,11 +64,11 @@ struct fd_elem
 void
 syscall_init (void) 
 {
-  intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+  intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
 static void
-syscall_handler (struct intr_frame *f UNUSED) 
+syscall_handler(struct intr_frame *f UNUSED)
 {
   if (!filesys_lock_initialized)
   {
@@ -64,7 +76,7 @@ syscall_handler (struct intr_frame *f UNUSED)
     filesys_lock_initialized = true;
   }
 
-  uint32_t syscall_num = *(uint32_t*)f->esp;
+  uint32_t syscall_num = *(uint32_t *)f->esp;
   // printf ("system call: %d!\n", syscall_num);
   uint32_t arg1 = 0;
   uint32_t arg2 = 0;
@@ -72,12 +84,11 @@ syscall_handler (struct intr_frame *f UNUSED)
 
   // initialize arguments
   if (syscall_num != SYS_HALT)
-    arg1 = *(uint32_t*)(f->esp + 4);
-  if (syscall_num == SYS_CREATE || syscall_num == SYS_READ 
-      || syscall_num == SYS_WRITE || syscall_num == SYS_SEEK)
-    arg2 = *(uint32_t*)(f->esp + 8);
+    arg1 = *(uint32_t *)(f->esp + 4);
+  if (syscall_num == SYS_CREATE || syscall_num == SYS_READ || syscall_num == SYS_WRITE || syscall_num == SYS_SEEK)
+    arg2 = *(uint32_t *)(f->esp + 8);
   if (syscall_num == SYS_READ || syscall_num == SYS_WRITE)
-    arg3 = *(uint32_t*)(f->esp + 12);
+    arg3 = *(uint32_t *)(f->esp + 12);
 
   // call syscall function
   switch (syscall_num)
@@ -172,32 +183,50 @@ verify_pointer(const void *pointer)
 static void
 halt(void)
 {
-
 }
 
 static void
 exit_handler(int status, struct intr_frame *f)
 {
-  printf("exiting\n");
-  f->eax = status;
+  struct thread *cur = thread_current();
+  uint32_t *pd;
+  struct list siblings = cur->parent->children;
+  lock_acquire(&process_lock);
+  if (!list_empty(&cur->children))
+  {
+    for (
+        struct list_elem *e = list_begin(&siblings);
+        e != list_end(&siblings);
+        e = list_next(e))
+    {
+      struct child_process *child = list_entry(e, struct child_process, wait_elem);
+      if (child->tid == cur->tid)
+      {
+        child->status = status;
+        lock_acquire(&cur->parent->wait_lock);
+        cond_signal(&cur->parent->wait_cond, &cur->parent->wait_lock);
+        lock_release(&cur->parent->wait_lock);
+        break;
+      }
+    }
+    // sema_up(&t->parent->wait_semaphore);
+  }
+  lock_release(&process_lock);
+  printf("%s: exit(%d)\n", cur->name, status);
   thread_exit();
 }
 
-static void
+static pid_t
 exec(const char *file, struct intr_frame *f)
 {
-  verify_pointer((void *) file);
+  return process_execute(file);
   pid_t pid = process_execute(file);
 }
 
-static void
+static int
 wait(pid_t pid, struct intr_frame *f)
 {
-  int i = 0;
-  while (1)
-  {
-    i++;
-  }
+  return process_wait(pid);
 }
 
 static void
@@ -284,15 +313,15 @@ read (int fd, void *buffer, unsigned length, struct intr_frame *f)
   return;
 }
 
-static void
-write (int fd, const void *buffer, unsigned int length, struct intr_frame *f)
+static int
+write(int fd, const void *buffer, unsigned int length, struct intr_frame *f)
 {
   verify_pointer(buffer);
   if (fd == 1)
   {
     putbuf(buffer, length);
     f->eax = length;
-    return;
+    return length;
   }
   
   struct list_elem *fd_list_elem = list_find_fd_elem(thread_current(), fd);
@@ -309,7 +338,7 @@ write (int fd, const void *buffer, unsigned int length, struct intr_frame *f)
 }
 
 static void
-seek (int fd, unsigned position)
+seek(int fd, unsigned position)
 {
   struct list_elem *fd_list_elem = list_find_fd_elem(thread_current(), fd);
   if (fd_list_elem == NULL)
@@ -339,7 +368,7 @@ tell (int fd, struct intr_frame *f)
 }
 
 static void
-close (int fd)
+close(int fd)
 {
   struct list_elem *fd_list_elem = list_find_fd_elem(thread_current(), fd);
   if (fd_list_elem == NULL)

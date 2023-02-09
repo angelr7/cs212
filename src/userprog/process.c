@@ -18,6 +18,8 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
+
 
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, void (**eip)(void), void **esp);
@@ -53,42 +55,13 @@ tid_t process_execute(const char *file_name)
   child.tid = tid;
   child.status = -1;
   child.wait_called = false;
-  list_push_back(&thread_current()->children, &child.elem);
+  list_push_back(&thread_current()->children, &child.wait_elem);
 
   if (tid == TID_ERROR)
     palloc_free_page(fn_copy);
   return tid;
 }
 
-int get_number_of_args(char *file_name)
-{
-  /* Go to the first non-whitespace. */
-  int i = 0;
-  while (*(file_name + i) != '\0' && *(file_name + i) == ' ')
-    i++;
-
-  /* If no characters are in the filename (i.e. just whitespace passed) */
-  if (*(file_name + i) == '\0')
-    return 0;
-
-  /* Find the word count of the command. */
-  int argc = 0;
-  bool in_space = false;
-  while (*(file_name + i) != '\0')
-  {
-    if (*(file_name + i) == ' ' && !in_space)
-    {
-      argc++;
-      in_space = true;
-    }
-    else if (*(file_name + i) != ' ' && in_space)
-      in_space = false;
-    i++;
-  }
-
-  /* If we end on whitespace, we've already accounted for the last word. */
-  return in_space ? argc : argc + 1;
-}
 
 /* A thread function that loads a user process and starts it
    running. */
@@ -138,12 +111,14 @@ start_process(void *file_name_)
 int process_wait(tid_t child_tid)
 {
   struct thread *t = thread_current();
+  if (list_empty(&t->children)) return -1;
+  lock_acquire(&process_lock);
   for (
       struct list_elem *e = list_begin(&t->children);
       e != list_end(&t->children);
       e = list_next(e))
   {
-    struct child_process *child = list_entry(e, struct child_process, elem);
+    struct child_process *child = list_entry(e, struct child_process, wait_elem);
     if (child->tid == child_tid)
     {
       if (child->wait_called)
@@ -154,11 +129,16 @@ int process_wait(tid_t child_tid)
 
       else
       {
-        sema_down(&t->wait_semaphore);
+        while(child->status == -1) {
+          lock_acquire(&t->wait_lock);
+          cond_wait(&t->wait_cond, &t->wait_lock);
+          lock_release(&t->wait_lock);
+        }
         return child->status;
       }
     }
   }
+  lock_release(&process_lock);
   return -1;
 }
 
@@ -167,7 +147,6 @@ void process_exit(void)
 {
   struct thread *cur = thread_current();
   uint32_t *pd;
-
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;

@@ -92,6 +92,7 @@ void thread_init(void)
   lock_init(&tid_lock);
   list_init(&ready_list);
   list_init(&all_list);
+  lock_init(&process_lock);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread();
@@ -449,8 +450,10 @@ init_thread(struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *)t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+  cond_init(&t->wait_cond);
+  lock_init(&t->wait_lock);
   list_init(&t->children);
-  sema_init(&t->wait_semaphore, 0);
+  // sema_init(&t->wait_semaphore, 0);
   t->parent = running_thread();
 
   old_level = intr_disable();

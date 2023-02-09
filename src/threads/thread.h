@@ -21,12 +21,13 @@ enum thread_status
 typedef int tid_t;
 #define TID_ERROR ((tid_t)-1) /* Error value for tid_t. */
 
+static struct lock process_lock;
 struct child_process
 {
    tid_t tid;
    int status;
    bool wait_called;
-   struct list_elem elem;
+   struct list_elem wait_elem;
 };
 
 /* Thread priorities. */
@@ -96,6 +97,8 @@ struct thread
    tid_t tid;                 /* Thread identifier. */
    enum thread_status status; /* Thread state. */
    char name[16];             /* Name (for debugging purposes). */
+   struct condition wait_cond;
+   struct lock wait_lock;
    uint8_t *stack;            /* Saved stack pointer. */
    int priority;              /* Priority. */
    struct list_elem allelem;  /* List element for all threads list. */
@@ -111,7 +114,6 @@ struct thread
 
    struct list children;
    struct thread *parent;
-   struct semaphore wait_semaphore;
 
    /* Owned by thread.c. */
    unsigned magic; /* Detects stack overflow. */

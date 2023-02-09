@@ -21,7 +21,7 @@ enum thread_status
 typedef int tid_t;
 #define TID_ERROR ((tid_t)-1) /* Error value for tid_t. */
 
-static struct lock process_lock;
+struct lock process_lock;
 struct child_process
 {
    tid_t tid;

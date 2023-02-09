@@ -16,32 +16,10 @@ typedef int pid_t;
 static struct lock filesys_lock;
 static bool filesys_lock_initialized = false;
 
-static struct lock filesys_lock;
-static bool filesys_lock_initialized = false;
 
 static void syscall_handler(struct intr_frame *);
 static void halt(void) NO_RETURN;
 static void exit_handler(int status, struct intr_frame *f) NO_RETURN;
-static int wait(pid_t pid_t);
-static bool create(const char *file, unsigned initial_size);
-static bool remove(const char *file);
-static int open(const char *file);
-static int filesize(int fd);
-static int read(int fd, void *buffer, unsigned length);
-static int write(int fd, const void *buffer, unsigned length, struct intr_frame *f);
-static void seek(int fd, unsigned position);
-static unsigned tell(int fd);
-static void close(int fd);
-
-static pid_t exec(const char *file);
-// static void open (const char *file);
-// static void filesize (int fd);
-// static void read (int fd, void *buffer, unsigned length);
-// static void write (int fd, const void *buffer, unsigned int length, struct intr_frame *f);
-// static void seek (int fd, unsigned position);
-// static void tell (int fd);
-// static void close (int fd);
-
 static void exec (const char *file, struct intr_frame *f);
 static void wait (pid_t pid_t, struct intr_frame *f);
 static void create (const char *file, unsigned initial_size, struct intr_frame *f);
@@ -183,6 +161,7 @@ verify_pointer(const void *pointer)
 static void
 halt(void)
 {
+
 }
 
 static void
@@ -213,20 +192,21 @@ exit_handler(int status, struct intr_frame *f)
   }
   lock_release(&process_lock);
   printf("%s: exit(%d)\n", cur->name, status);
+  f->eax = status;
   thread_exit();
 }
 
-static pid_t
+static void
 exec(const char *file, struct intr_frame *f)
 {
-  return process_execute(file);
-  pid_t pid = process_execute(file);
+  verify_pointer((void *) file);
+  f->eax = process_execute(file);
 }
 
-static int
+static void
 wait(pid_t pid, struct intr_frame *f)
 {
-  return process_wait(pid);
+  f->eax = process_wait(pid);
 }
 
 static void
@@ -313,7 +293,7 @@ read (int fd, void *buffer, unsigned length, struct intr_frame *f)
   return;
 }
 
-static int
+static void
 write(int fd, const void *buffer, unsigned int length, struct intr_frame *f)
 {
   verify_pointer(buffer);
@@ -321,7 +301,7 @@ write(int fd, const void *buffer, unsigned int length, struct intr_frame *f)
   {
     putbuf(buffer, length);
     f->eax = length;
-    return length;
+    return;
   }
   
   struct list_elem *fd_list_elem = list_find_fd_elem(thread_current(), fd);

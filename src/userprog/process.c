@@ -112,17 +112,22 @@ start_process(void *file_name_)
    does nothing. */
 int process_wait(tid_t child_tid)
 {
+  bool lock_released = false;
   struct thread *t = thread_current();
-  if (list_empty(&t->children)) return -1;
   lock_acquire(&process_lock);
+  if (list_empty(&t->children)) return -1;
   for (
       struct list_elem *e = list_begin(&t->children);
       e != list_end(&t->children);
       e = list_next(e))
   {
     struct child_process *child = list_entry(e, struct child_process, wait_elem);
+    
     if (child->tid == child_tid)
     {
+      lock_release(&process_lock);
+      lock_released = true;
+
       if (child->wait_called)
         return -1;
 
@@ -140,7 +145,8 @@ int process_wait(tid_t child_tid)
       }
     }
   }
-  lock_release(&process_lock);
+  if (!lock_released) lock_release(&process_lock);
+
   return -1;
 }
 
@@ -266,6 +272,7 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
   char *extracted_file_name = token;
 
   struct thread *t = thread_current();
+  strlcpy(t->exec_name, extracted_file_name, strlen(extracted_file_name) + 1);
   struct Elf32_Ehdr ehdr;
   struct file *file = NULL;
   off_t file_ofs;

@@ -97,6 +97,7 @@ struct thread
    tid_t tid;                 /* Thread identifier. */
    enum thread_status status; /* Thread state. */
    char name[16];             /* Name (for debugging purposes). */
+   char exec_name[16];
    struct condition wait_cond;
    struct lock wait_lock;
    uint8_t *stack;            /* Saved stack pointer. */

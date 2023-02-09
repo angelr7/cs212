@@ -169,9 +169,9 @@ exit_handler(int status, struct intr_frame *f)
 {
   struct thread *cur = thread_current();
   uint32_t *pd;
-  struct list siblings = cur->parent->children;
   lock_acquire(&process_lock);
-  if (!list_empty(&cur->children))
+  struct list siblings = cur->parent->children;
+  if (!list_empty(&cur->parent->children))
   {
     for (
         struct list_elem *e = list_begin(&siblings);
@@ -191,8 +191,7 @@ exit_handler(int status, struct intr_frame *f)
     // sema_up(&t->parent->wait_semaphore);
   }
   lock_release(&process_lock);
-  printf("%s: exit(%d)\n", cur->name, status);
-  f->eax = status;
+  printf("%s: exit(%d)\n", cur->exec_name, status);
   thread_exit();
 }
 

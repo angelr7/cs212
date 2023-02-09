@@ -90,6 +90,8 @@ struct thread
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
     bool process_thread;                /* Whether this thread is a thread owned by a process. */
+    int fd;
+    struct list fd_list;
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */

@@ -21,7 +21,7 @@ enum thread_status
 typedef int tid_t;
 #define TID_ERROR ((tid_t)-1) /* Error value for tid_t. */
 
-static struct lock process_lock;
+struct lock process_lock;
 struct child_process
 {
    tid_t tid;
@@ -97,6 +97,7 @@ struct thread
    tid_t tid;                 /* Thread identifier. */
    enum thread_status status; /* Thread state. */
    char name[16];             /* Name (for debugging purposes). */
+   char exec_name[16];
    struct condition wait_cond;
    struct lock wait_lock;
    uint8_t *stack;            /* Saved stack pointer. */

@@ -19,7 +19,7 @@ static bool filesys_lock_initialized = false;
 
 static void syscall_handler(struct intr_frame *);
 static void halt(void) NO_RETURN;
-static void exit_handler(int status, struct intr_frame *f) NO_RETURN;
+static void exit_handler(int status) NO_RETURN;
 static void exec (const char *file, struct intr_frame *f);
 static void wait (pid_t pid_t, struct intr_frame *f);
 static void create (const char *file, unsigned initial_size, struct intr_frame *f);
@@ -75,7 +75,7 @@ syscall_handler(struct intr_frame *f UNUSED)
       halt();
       break;
     case SYS_EXIT:
-      exit_handler((int) arg1, f);
+      exit_handler((int) arg1);
       break;
     case SYS_EXEC:
       exec((const char*) arg1, f);
@@ -142,18 +142,14 @@ verify_pointer(const void *pointer)
 {
   if (pointer == NULL || is_kernel_vaddr(pointer))
   {
-    // print exit message
-    free_resources();
-    thread_exit();
+    exit_handler(-1);
   }
   if (is_user_vaddr(pointer))
   {
     uint32_t *pd = thread_current()->pagedir;
     if (pagedir_get_page(pd, pointer) == NULL)
     {
-      // print exit message
-      free_resources();
-      thread_exit();
+      exit_handler(-1);
     }
   }
 }
@@ -165,7 +161,7 @@ halt(void)
 }
 
 static void
-exit_handler(int status, struct intr_frame *f)
+exit_handler(int status)
 {
   struct thread *cur = thread_current();
   uint32_t *pd;

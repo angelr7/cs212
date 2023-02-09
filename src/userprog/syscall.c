@@ -18,6 +18,7 @@ static bool filesys_lock_initialized = false;
 
 
 static void syscall_handler(struct intr_frame *);
+static void verify_pointer(const void *pointer);
 static void halt(void) NO_RETURN;
 static void exit_handler(int status) NO_RETURN;
 static void exec (const char *file, struct intr_frame *f);
@@ -46,8 +47,9 @@ syscall_init (void)
 }
 
 static void
-syscall_handler(struct intr_frame *f UNUSED)
+syscall_handler(struct intr_frame *f)
 {
+  verify_pointer(f->esp);
   if (!filesys_lock_initialized)
   {
     lock_init(&filesys_lock);

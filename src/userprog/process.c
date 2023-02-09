@@ -20,7 +20,6 @@
 #include "threads/vaddr.h"
 #include "threads/synch.h"
 
-
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, void (**eip)(void), void **esp);
 
@@ -49,16 +48,23 @@ tid_t process_execute(const char *file_name)
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
+  // 
 
   /* Set the thread's values to support child processes */
-  struct child_process child;
-  child.tid = tid;
-  child.status = -2;
-  child.wait_called = false;
+  struct thread *t = thread_current();
+  struct child_process *child = malloc (sizeof (struct child_process));
+  child->tid = tid;
+  child->status = -2;
+  child->wait_called = false;
   lock_acquire(&process_lock);
-  list_push_back(&thread_current()->children, &child.wait_elem);
+  list_push_back(&t->children, &child->wait_elem);
   lock_release(&process_lock);
-  sema_down(&thread_current()->wait_child);
+  sema_down(&t->wait_child);
+
+// loop through elems find child and check if it changed
+// we can also put the $alllist elem in the struct we are working with 
+// restructure our struct so children add themselves to parents list  
+// once we do that we know that the parent will have this updated, issue
 
   if (tid == TID_ERROR)
     palloc_free_page(fn_copy);
@@ -83,17 +89,23 @@ start_process(void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load(file_name, &if_.eip, &if_.esp);
-  sema_up(&thread_current()->parent->wait_child);
-
   /* If load failed, quit. */
   palloc_free_page(file_name);
+  // issue is that success 
+  // if (success)
+    sema_up(&thread_current()->parent->wait_child);
   if (!success)
-    thread_exit();
+    {
+      // thread_current()->status = -1;
+      // sema_up(&thread_current()->parent->wait_child);
+      thread_exit();
+    }
+
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
-     arguments on the stack in the form of a `struct intr_frame',
+     arguments on the stack in tjhe form of a `struct intr_frame',
      we just point the stack pointer (%esp) to our stack frame
      and jump to it. */
   asm volatile("movl %0, %%esp; jmp intr_exit"

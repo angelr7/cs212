@@ -21,7 +21,7 @@ static bool filesys_lock_initialized = false;
 static void syscall_handler(struct intr_frame *);
 static void verify_pointer(const void *pointer, int size);
 static void halt(void) NO_RETURN;
-static void exit_handler(int status) NO_RETURN;
+// static void exit_handler(int status) NO_RETURN;
 static void exec (const char *file, struct intr_frame *f);
 static void wait (pid_t pid_t, struct intr_frame *f);
 static void create (const char *file, unsigned initial_size, struct intr_frame *f);
@@ -171,10 +171,10 @@ verify_pointer(const void *pointer, int size)
 static void
 halt(void)
 {
-  
+  shutdown_power_off();
 }
 
-static void
+void
 exit_handler(int status)
 {
   struct thread *cur = thread_current();

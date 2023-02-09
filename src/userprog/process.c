@@ -136,7 +136,8 @@ int process_wait(tid_t child_tid)
 
       else
       {
-        while(child->status == -1) {
+        while(child->status == -1) 
+        {
           lock_acquire(&t->wait_lock);
           cond_wait(&t->wait_cond, &t->wait_lock);
           lock_release(&t->wait_lock);

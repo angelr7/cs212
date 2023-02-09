@@ -53,7 +53,7 @@ tid_t process_execute(const char *file_name)
   /* Set the thread's values to support child processes */
   struct child_process child;
   child.tid = tid;
-  child.status = -1;
+  child.status = -2;
   child.wait_called = false;
   lock_acquire(&process_lock);
   list_push_back(&thread_current()->children, &child.wait_elem);
@@ -131,12 +131,12 @@ int process_wait(tid_t child_tid)
       if (child->wait_called)
         return -1;
 
-      if (child->status != -1)
+      if (child->status != -2)
         return child->status;
 
       else
       {
-        while(child->status == -1) 
+        while(child->status == -2) 
         {
           lock_acquire(&t->wait_lock);
           cond_wait(&t->wait_cond, &t->wait_lock);
@@ -146,7 +146,8 @@ int process_wait(tid_t child_tid)
       }
     }
   }
-  if (!lock_released) lock_release(&process_lock);
+  if (!lock_released) 
+    lock_release(&process_lock);
 
   return -1;
 }

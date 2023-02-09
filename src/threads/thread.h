@@ -106,6 +106,7 @@ struct thread
                               //  bool process_thread;                /* Whether this thread is a thread owned by a process. */
     int fd;
     struct list fd_list;
+    struct semaphore wait_child;
 
    /* Shared between thread.c and synch.c. */
    struct list_elem elem; /* List element. */

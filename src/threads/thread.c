@@ -453,6 +453,7 @@ init_thread(struct thread *t, const char *name, int priority)
   cond_init(&t->wait_cond);
   lock_init(&t->wait_lock);
   list_init(&t->children);
+  sema_init(&t->wait_child, 0);
   // sema_init(&t->wait_semaphore, 0);
   t->parent = running_thread();
   t->fd = 2;

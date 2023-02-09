@@ -159,7 +159,7 @@ verify_pointer(const void *pointer)
 static void
 halt(void)
 {
-
+  
 }
 
 static void

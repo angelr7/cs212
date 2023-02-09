@@ -58,6 +58,7 @@ tid_t process_execute(const char *file_name)
   lock_acquire(&process_lock);
   list_push_back(&thread_current()->children, &child.wait_elem);
   lock_release(&process_lock);
+  sema_down(&thread_current()->wait_child);
 
   if (tid == TID_ERROR)
     palloc_free_page(fn_copy);
@@ -82,6 +83,7 @@ start_process(void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load(file_name, &if_.eip, &if_.esp);
+  sema_up(&thread_current()->parent->wait_child);
 
   /* If load failed, quit. */
   palloc_free_page(file_name);
@@ -136,7 +138,7 @@ int process_wait(tid_t child_tid)
 
       else
       {
-        while(child->status == -2) 
+        while(child->status == -2)
         {
           lock_acquire(&t->wait_lock);
           cond_wait(&t->wait_cond, &t->wait_lock);

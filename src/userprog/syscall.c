@@ -200,12 +200,6 @@ void exit_handler(int status)
   }  
   lock_release(&filesys_lock);  
 
-  lock_acquire(&filesys_lock);
-  for (struct list_elem *e = list_begin(&cur->fd_list); e != list_end(&cur->fd_list); e = list_next(e)) {
-    struct fd_elem *fd_elem = list_entry(e, struct fd_elem, elem);
-    filesys_remove(fd_elem->file);
-  }  
-  lock_release(&filesys_lock);  
 
   /*if parent has exited then free yourself*/
   if (process_info->tried_to_free) 

@@ -193,14 +193,15 @@ void exit_handler(int status)
     else child->tried_to_free = true;
   }
 
-  /*FABIANNNN LOOOK HERE BROOOOO
-  OOOOOO
-  PEEEP THISSSS*/
   lock_acquire(&filesys_lock);
+  struct fd_elem *prev = NULL;
   for (struct list_elem *e = list_begin(&cur->fd_list); e != list_end(&cur->fd_list); e = list_next(e)) {
+    if (prev) free(prev);
     struct fd_elem *fd_elem = list_entry(e, struct fd_elem, elem);
-    filesys_remove(fd_elem->file);
-  }  
+    file_close(fd_elem->file);
+    prev = fd_elem;
+  }
+  if (prev) free(prev);
   lock_release(&filesys_lock);  
 
 
@@ -384,4 +385,5 @@ close(int fd)
   file_close(found_fd_elem->file);
   lock_release(&filesys_lock);
   list_remove(fd_list_elem);
+  free(found_fd_elem);
 }

@@ -111,7 +111,7 @@ struct thread
    tid_t tid;                 /* Thread identifier. */
    enum thread_status status; /* Thread state. */
    char name[16];             /* Name (for debugging purposes). */
-   char exec_name[16];        /* Name used to print */
+   char exec_name[128];        /* Name used to print */
    struct file *exec_file;    /* File being executed*/
    uint8_t *stack;           /* Saved stack pointer. */
    int priority;             /* Priority. */

@@ -29,62 +29,93 @@ Fabian Luna <luna1206@stanford.edu>
 >> A1: Copy here the declaration of each new or changed `struct' or
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
-We did not create or modify any structs to implement argument passing. We also
-did not make use of any global or static variables, and did not typedef any 
-structs or other types.
+
+/* Limit for how many characters the user can type in the command line */
+#define CMDLINE_CHAR_LIMIT 128
 
 ---- ALGORITHMS ----
 
 >> A2: Briefly describe how you implemented argument parsing.  How do
 >> you arrange for the elements of argv[] to be in the right order?
 >> How do you avoid overflowing the stack page?
-We handle argument passing in the call to setup_stack in the load function. 
-When we create a new process, we create a new thread that runs the 
-start_process function. When this function runs, it calls the load function, 
-which then calls setup_stack. We pass in the entire filename string, 
-including arguments into setup_stack, so we can parse the necessary values 
-and place them in the stack using the esp pointer.
-In setup_stack, we make sure to only begin stack initialization if the page
-is installed successfully. If this is the case, we initialize an argc 
-variable and a 128-length list of char *'s (since pintos can only pass 128
-bytes to the kernel, this is always guaranteed to be able to store all of
-our process' arguments.) We then count the amount of space that is necessary 
-for our non-whitespace characters, making sure to add space for null 
-terminators. After this, we copy our cmdline string, and place it into a 
-loop with strtok_r, so that we pull all of the words out of our string. For
-every word we pull with strtok_r, we make sure to copy that string into 
-the current location of esp, and offset esp downwards to account for the 
-size of that string. After this is done, we make sure that our esp pointer
-is four-byte aligned. With this managed, we then set a "return address" of
-0 and push it on the stack, offestting esp by sizeof(int) afterwards. 
-Finally, we then push the values of argc, the address of argv, and the 
-address of all of the arguments of argv using this same logic. After 
-pushing all values on the stack, we then offset esp one last time to 
-be in its final position, right below PHYS_BASE.
+
+    We handle argument passing in the call to setup_stack in the load function. 
+    When we create a new process, we create a new thread that runs the 
+    start_process function. When this function runs, it calls the load function
+    which then calls setup_stack. In the load function, if we find that the 
+    length of the command line input is greater than CMDLINE_CHAR_LIMIT, load
+    will fail and we will not setup the stack. We pass in the entire filename 
+    string, including arguments into setup_stack, so we can parse the necessary
+    values and place them in the stack using the esp pointer.
+
+    In setup_stack, we make sure to only begin stack initialization if the page
+    is installed successfully. If this is the case, we initialize an argc 
+    variable. We then count the total number of characters we will need to push
+    onto the stack (sum of the sizes of each arg string and their null
+    characters) by looping through the command line input characters. We ignore
+    whitespace in the total count and make sure to add to the count for every
+    null terminators we will need. We also caculate the argc value within this
+    loop by incrementing it whenever we find that we need to account for a
+    null terminator.
+
+    We set the esp pointer to point to PHYS_BASE. We then subtract the amount
+    of characters we are going to push onto the stack from the esp pointer to
+    know where start if the arguments on the stack will begin. We also
+    initialize an array of char * pointers of size argc to save the location
+    in memory of each arg string pushed on the stack.
+    After this, we copy our cmdline string, and place it into a loop with 
+    strtok_r, so that we pull all of the words out of our string. For
+    every word we pull with strtok_r, we make sure to copy that string into 
+    the current location of esp, and save the esp pointer into the argv array.
+    Then we offset esp upwards to account for the size of that string. 
+    After this is done, our esp pointer should be as location PHYS_BASE. We
+    set esp pointer back to the start of the arguments in the stack, below 
+    the first argument from the command line. We make sure that our esp pointer
+    is four-byte aligned and decrement esp as necessary.
+
+    With this managed, we determine where our esp pointer will be pointing to
+    after everything has been pushed onto the stack by subtracting the number
+    of bytes that will needed to push the return address, argc, the base argv
+    pointer, and all of the individual argv pointers that follow. We begin at
+    esp's final location set a "return adress" of 0 and push it onto the stack,
+    incrementing the esp pointer by sizeof(int) afterwords. Finally, we push
+    the values of argc, the address of argv, and the address of all the
+    arguments of argv using this same logic. At this point, our esp pointer
+    should be back where we were after aligning the pointer for 4 bytes
+    alignment. We set esp back to point right below the return address.
+
+    This algorithm works by calculating how much space will be needed for what
+    we want to push onto the stack, moving the esp to point to the base of
+    where those pushed arguments will begin, and push them onto the stack in
+    order. We always have to reset back to the intial point we calculated
+    because we push from the stack bottom to up and need to return the stack
+    pointer back to the bottom of where we inserted.
 
 
 ---- RATIONALE ----
 >> A3: Why does Pintos implement strtok_r() but not strtok()?
-According to the Linux Programmer's Manual (found by running "man strtok_r"), 
-strtok_r is a reentrant version of strtok. strtok_r maintains its context
-amongst different calls by using the saveptr variable. By doing this, we allow
-multiple strings to be parsed concurrently using strtok_r. Since strtok doesn't 
-have a saveptr variable, we wouldn't be able to parse multiple strings 
-concurrently or parse strings in nested loops with it. 
+
+    According to the Linux Programmer's Manual (found by running "man strtok_r"), 
+    strtok_r is a reentrant version of strtok. strtok_r maintains its context
+    amongst different calls by using the saveptr variable. By doing this, we allow
+    multiple strings to be parsed concurrently using strtok_r. Since strtok doesn't 
+    have a saveptr variable, we wouldn't be able to parse multiple strings 
+    concurrently or parse strings in nested loops with it. 
 
 >> A4: In Pintos, the kernel separates commands into a executable name
 >> and arguments.  In Unix-like systems, the shell does this
 >> separation.  Identify at least two advantages of the Unix approach.
-One advantage of this approach would be that all of our error-handling logic
-can be condensed into the shell, rather than placing this load on the kernel.
-This brings more security into our processing system, because all validation
-is done on the user-side, and not on the kernel side where things are much
-more volatile. There is also one less layer of indirection when the shell 
-has the sole responsibility of parsing commands and subprocessing.
 
-In general, this brings another advantage as well. By removing the need to
-parse and validate these commands in the kernel, the UNIX approach is much 
-more efficent and uses less memory for the kernel.
+    One advantage of this approach would be that all of our error-handling logic
+    can be condensed into the shell, rather than placing this load on the kernel.
+    This brings more security into our processing system, because all validation
+    is done on the user-side, and not on the kernel side where things are much
+    more volatile. There is also one less layer of indirection when the shell 
+    has the sole responsibility of parsing commands and subprocessing.
+
+    In general, this brings another advantage as well. By removing the need to
+    parse and validate these commands in the kernel, the UNIX approach is much 
+    more efficent and uses less memory for the kernel.
 
 
                  SYSTEM CALLS
@@ -119,19 +150,27 @@ struct child_process
 
 };
 
-
+/* The added members allows each thread to keep track
+of the name of its executable file and pointer to its opened
+executable file for the purpose of printing the name and closing
+the executable when the process exits. The cur_fd and fd_list members
+allow us to keep track of fd assignment and the process's current open
+files. The
 struct thread
 {
-   char exec_name[16];        /* Name used to print */
+   char exec_name[128];        /* Name used to print */
    struct file *exec_file;    /* File being executed*/
-   int fd;                   /* Threads fd */
-   struct list fd_list;      /* Threads fd_list */
+   int cur_fd;               /* Thread current fd number to assign */
+   struct list fd_list;      /* Thread open file descriptors list */
    struct list children; /*List of this threads chilldren*/
    struct child_process *process; /*Pointer to the child_process of this thread*/
 };
 
-static struct lock filesys_lock;
-static bool filesys_lock_initialized = false;
+/* A global lock that allows us to synchronize all file system calls
+across processes. Initialized once for all processes in thread_init. */
+struct lock filesys_lock;
+
+/* A struct to add files to threads' open file descriptors list */
 struct fd_elem
 {
   int fd;
@@ -143,10 +182,62 @@ struct fd_elem
 >> Are file descriptors unique within the entire OS or just within a
 >> single process?
 
+    File descriptors are only unique within a single process. Each 
+    process's thread is initialized with its cur_fd member variable
+    at 2. We do not want to assign any files we open an fd of 0 or 1
+    because those are reserved for standard input and output. Whenever
+    we open a file in a system call, we assign it an fd of cur_fd's
+    value and create an fd_elem holding that fd and file pointer and
+    add it to the process's thread's fd_list to keep track of all of the
+    process's open files and their file descriptors. We then increment 
+    the thread's cur_fd value by one so that the next call to open 
+    assigns the newly opened file the next unassigned fd. The cur_fd 
+    value will continue to be incremented with all calls to open and 
+    will never decrement, even when closing files. Each process uses
+    this system, so across processes there can be different files assigned
+    the same fd, but processes never have to access the open files of
+    another process so this is safe.
+
+
 ---- ALGORITHMS ----
 
 >> B3: Describe your code for reading and writing user data from the
 >> kernel.
+
+    We implemented the verify_pointer and verify_string functions to
+    ensure that all reading and writing user data from the kernel would
+    be safe. The verify_pointer function takes in a pointer and the size
+    of the data that it is verifying in bytes. If that pointer is null,
+    or if the first or last byte of memory is a kernel address, then we
+    exit with status -1 to avoid dereferencing invalid memory. We then
+    check to ensure that the pointer is a user address and if not we
+    exit with status -1. If it is a user address, we call pagedir_get_page()
+    on both the first byte of data and the last byte of data to make sure
+    that all bytes are mapped to a physical address. If any of those calls
+    return NULL (memory is not mapped), then we exit with status -1.
+
+    The verify_string function utilizes this verify_pointer function to
+    verify that every char (byte) in a string is in valid memory. Because we do
+    not know the length of the string before hand, we call call verify_pointer
+    in a while loop that loops through every char in the string and either
+    ends once a NULL character is found or exits with status -1 within a call
+    to verify pointer.
+
+    When a syscall is called, our handler verifies that every argument that we
+    pop off the stack is in valid memory using verify pointer, including the
+    syscall number. If all arguments are valid, we pass them into our syscall
+    handler functions. For any of these functions that have char * as
+    arguments passed in, such as open(), we verify that every byte of that 
+    string is in valid memory using our verify string function. For functions
+    that pass in buffers that will be written to, we verify that every byte
+    of that buffer that we could potentially write to is valid by calling
+    verify_pointer and passing in the length of the buffer that the user
+    provided as an argument. This ensure that all user data that is read from
+    and written to from the kernel is in valid memory.
+
+    Lastly, we also updated the pagefault_handler so that is a user tries to
+    derefence a NULL pointer or a kernel address within their process, we 
+    exit with status -1 instead of page faulting.
 
 >> B4: Suppose a system call causes a full page (4,096 bytes) of data
 >> to be copied from user space into the kernel.  What is the least
@@ -154,6 +245,40 @@ struct fd_elem
 >> (e.g. calls to pagedir_get_page()) that might result?  What about
 >> for a system call that only copies 2 bytes of data?  Is there room
 >> for improvement in these numbers, and how much?
+
+    In the worst case scenario, we will have to verify that every byte
+    of the data is in valid memory using verify_pointer. This could be the
+    case if the data being copied is a string. Every call to verify pointer
+    makes 2 calls to pagedir_get_page(), so verifying each byte would cost
+    2 * 4096 calls to pagedir_get_page. There are also the calls that come
+    from the syscall_handler verifying the syscall number and arguments being
+    popped off the stack, so with three arguments this would cost an extra
+    8 calls. In total the maximum number of inspections for 4096 bytes of data
+    could be 2 * 4096 + 8 = 8200. In the case that we know the size of data in
+    bytes, such as the user passing in a buffer with length 4096, we would be
+    able to verify the data with a single call to verify_pointer. If there are
+    a minimum of two arguments with the pointer and the length and the syscall
+    number, we could hypothetically have a syscall that handle 4096 bytes of 
+    data with only 4 total calls to verify pointer which would mean that there
+    could be a minimum of 2 * 4 = 8 inspections.
+    
+    If our system call is only hanlding 2 bytes of data, the maximum number
+    of inspections would call for every byte to be verified. This means we
+    could have up to 2 calls to verify_pointer and an additional 4 calls if
+    3 arguments are passed in with the syscall number. This means that there
+    could be a maximum of (2 + 4) * 2 = 12 calls to pagedir_get_page(). If
+    our system call knows how big the data is in bytes, we could have a minimum
+    of 1 call to verify pointer to verify the data and the additional
+    verification from a minimum of 2 arguments and a system call. This could
+    be a minumum of (1 + 2) * 2 = 6 inspections.
+
+    There is a lot of potential room for improvement in these numbers if we
+    were to force users to provide the size of all arguments they were passing
+    in to syscall functions for parameters that may have unspecified lengths
+    like strings. If this were the case, we could greatly decrease the amount
+    of inspections needed when verifying the pointers to data for very big
+    objects down to a single call to verify_pointer needed to verify the data
+    of the parameter.
 
 >> B5: Briefly describe your implementation of the "wait" system call
 >> and how it interacts with process termination.
@@ -197,6 +322,33 @@ struct fd_elem
 >> allocated resources (locks, buffers, etc.) are freed?  In a few
 >> paragraphs, describe the strategy or strategies you adopted for
 >> managing these issues.  Give an example.
+
+    By creating the verify_pointer and verify_strings functions, we created
+    a non-obscure way to allow each syscall function to focus on the
+    primary focus of the syscall functions code. We make sure to always verify
+    pointers and strings before ever accessing the data using these helper
+    functions, which abstracts that logic out of all the spots where we need
+    to verify pointers.
+
+    Furthermore, all the logic that detects invalid memory in our functions
+    lead to one logical path, calling the exit handler. Because of this, we are
+    able to place all of our code that frees any resources that we may have
+    temporarily allocated in that function. We allocate memory for things such
+    as child_process structs and fd_elems that threads keep track of for their
+    purposes. We are able to free these structs as necessary within this
+    exit_handler function and make sure we do not leak any memory. It is
+    helpful to have the processes threads keep track of their own allocated
+    memory because it makes it easier to access and free their memory in the
+    exit_handler function, where all processes go to die in the case of any
+    errors.
+
+    For example, each thread has a fd_list of fd_elems that correspond to their
+    open file descriptors. These fd_elems are malloced to ensure that they are
+    available past the completion of the open system call. If we try to
+    derefence and invalid pointer and catch that in verify_pointer, our system
+    will exit with status -1, and in this exit handler we are able to loop
+    through the process thread's fd list and both close and free all files
+    in the open file descriptor list.
 
 ---- SYNCHRONIZATION ----
 
@@ -324,8 +476,37 @@ Case 3: P Exit C exiting:
 >> B9: Why did you choose to implement access to user memory from the
 >> kernel in the way that you did?
 
+    We believed that having these verify_pointer and verify_string
+    pointer functions that catch invalid access to memory before dereferencing
+    were a better design decision as opposed to modifying the page fault
+    handler and adding all of our logic in that function because it makes
+    the logic of our handling user memory access less obscure. Rather than
+    allowing the page fault to always happen, we were able to ensure that we
+    never allowed an invalid access to occur exited with status -1 straight
+    away. We think this is a cleaner approach and benefits anyone who reads
+    our source code as they will be able to understand our logic much easier.
+
 >> B10: What advantages or disadvantages can you see to your design
 >> for file descriptors?
+
+    By having each thread have a local copy of its open file descriptors
+    list, there is no need to ensure synchronization between processes and
+    their fd_list when opening and closing files. Although there can be
+    duplicate file descriptors across processes that point to different files,
+    their functionality makes it so that this is not a problem. Also, because
+    we store fd_elems in a list, adding new open files to the list can be done
+    in constant time. Our because we neglect closing files in our fd assignment
+    process, we also have an efficient way to assign file descriptors to files.
+    The next opened file is always assigned the incremented cur_fd value.
+
+    Some disadvantages of this are that if we were to need to extend the 
+    functionality of this fd system if processes needed to know the number
+    of other processes who have the same file open, our current system would
+    require a very inefficient solution that looks through all lists. In that
+    case, it could be more efficient to have a single global fd list. Also,
+    because our fd_elems are stored in a list, lookup time is linear in the
+    case that we need to find a certain fd. A hashmap could potentially
+    provide a faster lookup time in these scenarios.
 
 >> B11: The default tid_t to pid_t mapping is the identity mapping.
 >> If you changed it, what advantages are there to your approach?

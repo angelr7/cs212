@@ -17,7 +17,6 @@
 typedef int pid_t;
 
 
-
 static void syscall_handler(struct intr_frame *);
 static void verify_pointer(const void *pointer, int size);
 static void halt(void) NO_RETURN;
@@ -34,8 +33,7 @@ static void seek(int fd, unsigned position);
 static void tell(int fd, struct intr_frame *f);
 static void close(int fd);
 
-static struct lock filesys_lock;
-static bool filesys_lock_initialized = false;
+
 struct fd_elem
 {
   int fd;
@@ -51,16 +49,8 @@ void syscall_init(void)
 static void
 syscall_handler(struct intr_frame *f)
 {
-  // verify_pointer(f, sizeof(struct intr_frame));
-  if (!filesys_lock_initialized)
-  {
-    lock_init(&filesys_lock);
-    filesys_lock_initialized = true;
-  }
-
   verify_pointer(f->esp, sizeof(uint32_t));
   uint32_t syscall_num = *(uint32_t *)f->esp;
-  // printf ("system call: %d!\n", syscall_num);
   uint32_t arg1 = 0;
   uint32_t arg2 = 0;
   uint32_t arg3 = 0;
@@ -145,7 +135,7 @@ list_find_fd_elem(struct thread *t, int fd)
   return NULL;
 }
 
-/*Verify pointer address sent to us, if buffer validate that end byte is also valid */
+/*Verify that every byte of data that a pointer points to is valid */
 static void
 verify_pointer(const void *pointer, int size)
 {
@@ -162,6 +152,18 @@ verify_pointer(const void *pointer, int size)
       exit_handler(-1);
     }
   }
+  else
+    exit_handler(-1);
+}
+
+/*Verify that every byte of a string is in valid memory */
+static void
+verify_string(const char *string)
+{
+  char *cur = string;
+  verify_pointer(cur, sizeof(char));
+  while (*cur != '\0')
+    verify_pointer(++cur, sizeof(char));
 }
 
 /*Halt program*/
@@ -229,7 +231,7 @@ void exit_handler(int status)
 static void
 exec(const char *file, struct intr_frame *f)
 {
-  verify_pointer((void *)file, sizeof(char *));
+  verify_string(file);
   f->eax = process_execute(file);
 }
 
@@ -244,7 +246,7 @@ wait(pid_t pid, struct intr_frame *f)
 static void
 create(const char *file, unsigned initial_size, struct intr_frame *f)
 {
-  verify_pointer((void *)file, sizeof(char *));
+  verify_string(file);
   lock_acquire(&filesys_lock);
   bool success = filesys_create(file, initial_size);
   lock_release(&filesys_lock);
@@ -255,7 +257,7 @@ create(const char *file, unsigned initial_size, struct intr_frame *f)
 static void
 remove(const char *file, struct intr_frame *f)
 {
-  verify_pointer((void *)file, sizeof(char *));
+  verify_string(file);
   lock_acquire(&filesys_lock);
   bool success = filesys_remove(file);
   lock_release(&filesys_lock);
@@ -266,7 +268,7 @@ remove(const char *file, struct intr_frame *f)
 static void
 open(const char *file, struct intr_frame *f)
 {
-  verify_pointer((void *)file, sizeof(char *));
+  verify_string(file);
   lock_acquire(&filesys_lock);
   struct file *opened_file = filesys_open(file);
   lock_release(&filesys_lock);
@@ -306,7 +308,7 @@ filesize(int fd, struct intr_frame *f)
 static void
 read(int fd, void *buffer, unsigned length, struct intr_frame *f)
 {
-  verify_pointer(buffer, sizeof(void *));
+  verify_pointer(buffer, length);
   if (fd == 0)
   {
     for (unsigned i = 0; i < length; i++)
@@ -333,7 +335,7 @@ read(int fd, void *buffer, unsigned length, struct intr_frame *f)
 static void
 write(int fd, const void *buffer, unsigned int length, struct intr_frame *f)
 {
-  verify_pointer(buffer, sizeof(void *));
+  verify_pointer(buffer, length);
   if (fd == 1)
   {
     putbuf(buffer, length);

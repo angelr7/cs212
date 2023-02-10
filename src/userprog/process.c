@@ -52,7 +52,7 @@ tid_t process_execute(const char *file_name)
   sema_init(&child->wait_child, 0);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create(file_name, PRI_DEFAULT, start_process, &child);
+  tid = thread_create(file_name, PRI_DEFAULT, start_process, child);
 
   /* Set the thread's values to support child processes */
   child->tid = tid;
@@ -82,6 +82,7 @@ start_process(void *file_name_)
   bool success;
 
   struct child_process *child = file_name_;
+  thread_current()->process = child;
   char *file_name = child->file_name;
 
   /* Initialize interrupt frame and load executable. */
@@ -100,7 +101,6 @@ start_process(void *file_name_)
     thread_exit();
   }
 
-  thread_current()->process = child;
   sema_up(&child->wait_child);
 
   /* Start the user process by simulating a return from an

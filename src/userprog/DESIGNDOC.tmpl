@@ -114,6 +114,7 @@ struct fd_elem
 
 >> B5: Briefly describe your implementation of the "wait" system call
 >> and how it interacts with process termination.
+
     Our wait implemententation checks to see if it has children if not 
     it will return -1. Then it will loop through children, which is
     a list of struct child_process which the current thread created,
@@ -160,6 +161,28 @@ struct fd_elem
 >> fails, so it cannot return before the new executable has completed
 >> loading.  How does your code ensure this?  How is the load
 >> success/failure status passed back to the thread that calls "exec"?
+
+    In the child_process struct we have a semaphore called wait_child. 
+    In process_execute we first initialize the child process' 
+    child_process. We then create the new thread and pass the new 
+    child_process through the thread_create() call. We add this child to
+    the parents list of children. We then make the parent wait until the
+    child has finished start_process using sema_down(&wait_child).
+    
+    Passing the child_process through thread_create() gives us access to
+    child_process in the childs call to start_process. At the end of 
+    start_process, after the load has been completed we can see if the 
+    load was done successfully through the success boolean. If sucess 
+    is true we will wake up the parent using sema_up(&wait_child). If 
+    unsuccessful we set the child_process' child_error boolean to true,
+    wake up the parent using sema_up(&wait_child), and thread_exit().
+
+    The sema_up wakes up the parent and we are back in process_execute. 
+    At this point we check the child_process' child_error, If it is
+    true return -1, otherwise finish as usual. This wait_child semaphore 
+    ensures that the parent must wait until after the child thread has 
+    loaded to finish process_execute(). The shared child_process struct 
+    allows for information to easily be passed between parent and child.
 
 >> B8: Consider parent process P with child process C.  How do you
 >> ensure proper synchronization and avoid race conditions when P

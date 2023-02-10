@@ -68,7 +68,6 @@ tid_t process_execute(const char *file_name)
     return -1;
   if (tid == TID_ERROR)
   {
-    // tid = TID_ERROR;
     palloc_free_page(fn_copy);
   }
   return tid;

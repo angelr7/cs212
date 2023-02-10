@@ -316,14 +316,13 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
   /* Open executable file. */
   file = filesys_open(extracted_file_name);
   t->exec_file = file;
-  file_deny_write(file);
   if (file == NULL)
   {
-
-    // exit_handler(-1);
     printf("load: %s: open failed\n", extracted_file_name);
     goto done;
   }
+  else
+    file_deny_write(file);
 
   /* Read and verify executable header. */
   if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr || memcmp(ehdr.e_ident, "\177ELF\1\1\1", 7) || ehdr.e_type != 2 || ehdr.e_machine != 3 || ehdr.e_version != 1 || ehdr.e_phentsize != sizeof(struct Elf32_Phdr) || ehdr.e_phnum > 1024)

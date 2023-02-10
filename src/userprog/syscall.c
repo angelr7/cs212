@@ -177,29 +177,49 @@ void exit_handler(int status)
 {
   struct thread *cur = thread_current();
   uint32_t *pd;
+
   lock_acquire(&process_lock);
-  struct list siblings = cur->parent->children;
-  if (!list_empty(&siblings))
-  {
-    for (
-        struct list_elem *e = list_begin(&siblings);
-        e != list_end(&siblings);
-        e = list_next(e))
-    {
-      struct child_process *child = list_entry(e, struct child_process, wait_elem);
-      if (child->tid == cur->tid)
-      {
-        child->status = status;
-        lock_acquire(&cur->parent->wait_lock);
-        cond_signal(&cur->parent->wait_cond, &cur->parent->wait_lock);
-        lock_release(&cur->parent->wait_lock);
-        break;
-      }
-    }
+  struct child_process *process_info = cur->process;
+  process_info->status = status;
+
+  for (struct list_elem *e = list_begin(&cur->children); e != list_end(&cur->children); e = list_next(e)) {
+    struct child_process *child = list_entry(e, struct child_process, wait_elem);
+    if (child->tried_to_free) 
+      free(child);
+    else child->tried_to_free = true;
   }
+
+  if (process_info->tried_to_free) 
+    free(process_info);
+    
+  else {
+    lock_acquire(&process_info->wait_lock);
+    cond_signal(&process_info->wait_cond, &process_info->wait_lock);
+    lock_release(&process_info->wait_lock);
+  }
+
   lock_release(&process_lock);
   printf("%s: exit(%d)\n", cur->exec_name, status);
   thread_exit();
+  // struct list siblings = cur->parent->children;
+  // if (!list_empty(&siblings))
+  // {
+  //   for (
+  //       struct list_elem *e = list_begin(&siblings);
+  //       e != list_end(&siblings);
+  //       e = list_next(e))
+  //   {
+  //     struct child_process *child = list_entry(e, struct child_process, wait_elem);
+  //     if (child->tid == cur->tid)
+  //     {
+  //       child->status = status;
+  //       lock_acquire(&cur->parent->wait_lock);
+  //       cond_signal(&cur->parent->wait_cond, &cur->parent->wait_lock);
+  //       lock_release(&cur->parent->wait_lock);
+  //       break;
+  //     }
+  //   }
+  // }
 }
 
 static void

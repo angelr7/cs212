@@ -24,13 +24,6 @@
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, void (**eip)(void), void **esp);
 
-struct process_arguments
-{
-  char *filename;
-  char **argv;
-  int argc;
-};
-
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -47,24 +40,29 @@ tid_t process_execute(const char *file_name)
     return TID_ERROR;
   strlcpy(fn_copy, file_name, PGSIZE);
 
-  /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
-  //
-
-  /* Set the thread's values to support child processes */
   struct thread *t = thread_current();
   struct child_process *child = malloc(sizeof(struct child_process));
-  child->tid = tid;
   child->status = -2;
   child->wait_called = false;
+  child->child_error = false;
+  child->tried_to_free = false;
+  child->file_name = fn_copy;
+  lock_init(&child->wait_lock);
+  cond_init(&child->wait_cond);
+  sema_init(&child->wait_child, 0);
+
+  /* Create a new thread to execute FILE_NAME. */
+  tid = thread_create(file_name, PRI_DEFAULT, start_process, &child);
+
+  /* Set the thread's values to support child processes */
+  child->tid = tid;
   lock_acquire(&process_lock);
   list_push_back(&t->children, &child->wait_elem);
   lock_release(&process_lock);
-  sema_down(&t->wait_child);
+  sema_down(&child->wait_child);
 
-  if (t->child_error)
+  if (child->child_error)
   {
-    t->child_error = false;
     return -1;
   }
 
@@ -82,7 +80,9 @@ start_process(void *file_name_)
   // char *file_name = args->filename;
   struct intr_frame if_;
   bool success;
-  char *file_name = file_name_;
+
+  struct child_process *child = file_name_;
+  char *file_name = child->file_name;
 
   /* Initialize interrupt frame and load executable. */
   memset(&if_, 0, sizeof if_);
@@ -92,16 +92,16 @@ start_process(void *file_name_)
   success = load(file_name, &if_.eip, &if_.esp);
   /* If load failed, quit. */
   palloc_free_page(file_name);
-  // issue is that success
-  // if (success)
-  struct thread *parent = thread_current()->parent;
+
   if (!success)
   {
-    parent->child_error = true;
-    sema_up(&parent->wait_child);
+    child->child_error = true;
+    sema_up(&child->wait_child);
     thread_exit();
   }
-  sema_up(&parent->wait_child);
+
+  thread_current()->process = child;
+  sema_up(&child->wait_child);
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -141,6 +141,8 @@ int process_wait(tid_t child_tid)
 
     if (child->tid == child_tid)
     {
+      // could still be a race condition here. might need to release the lock
+      // in a different way.
       lock_release(&process_lock);
       lock_released = true;
 
@@ -152,14 +154,14 @@ int process_wait(tid_t child_tid)
         child->wait_called = true;
         return child->status;
       }
-        
+
       else
       {
         while (child->status == -2)
         {
-          lock_acquire(&t->wait_lock);
-          cond_wait(&t->wait_cond, &t->wait_lock);
-          lock_release(&t->wait_lock);
+          lock_acquire(&child->wait_lock);
+          cond_wait(&child->wait_cond, &child->wait_lock);
+          lock_release(&child->wait_lock);
         }
         child->wait_called = true;
         return child->status;

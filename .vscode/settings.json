@@ -2,6 +2,7 @@
     "files.associations": {
         "interrupt.h": "c",
         "filesys.h": "c",
-        "list.h": "c"
+        "list.h": "c",
+        "file.h": "c"
     }
 }

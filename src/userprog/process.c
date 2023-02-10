@@ -537,23 +537,35 @@ setup_stack(void **esp, const char *cmdline)
     {
       *esp = PHYS_BASE;
 
+      /* Pintos only allows us to pass 128 bytes of input to the kernel, so holding 128 char*'s 
+         in this array ensures that we always hold AT LEAST the minimum amount of data that's 
+         necessary. */
       char *argv[128];
       int argc = 0;
 
-      // calculate the total number of characters to push and argc value from cmdline input
+      /* Calculate the total number of characters to push, as well as the total number of 
+         arguments. */
       int len = strlen(cmdline);
       int chars_to_push = 0;
       for (int i = 0; i < len; i++)
       {
+        /* If we aren't at a space, we need to count the current character we're on. If we happen to be 
+           the last character in the cmdline string, we need to add one more character for the string's 
+           null pointer and update argc.
+         */
         if (cmdline[i] != ' ')
         {
           chars_to_push++;
-          if (i == len - 1 && cmdline[i] != ' ')
+          if (i == len - 1)
           {
             chars_to_push++;
             argc++;
           }
         }
+
+        /* This check ensures that we don't double count spaces, or count leading spaces either. We 
+           only want to update our char count and word count for every period of whitespace between the
+           arguments */
         else if (i > 0 && cmdline[i - 1] != ' ')
         {
           chars_to_push++;
@@ -561,10 +573,11 @@ setup_stack(void **esp, const char *cmdline)
         }
       }
 
+      /* Offest esp to make space for the command and its arguments */
       void *esp_string_start = *esp - chars_to_push;
       *esp = esp_string_start;
 
-      // tokenize cmdline input and push onto stack
+      /* Tokenize cmdline input and push it onto the stack. */
       int i = 0;
       char cmdline_copy[len + 1];
       strlcpy(cmdline_copy, cmdline, len + 1);
@@ -585,29 +598,32 @@ setup_stack(void **esp, const char *cmdline)
       while ((int)*esp % 4 != 0)
         *((char *)(--(*esp))) = '\0';
 
+      /* Offset esp so that we can add the argc and argv pointers, as well as the "return address" */
       int bytes_to_push = sizeof(void *) * (argc + 4);
       void *esp_return_start = *esp - bytes_to_push;
       *esp = esp_return_start;
 
-      // set return address to 0
+      /* Set return addresses to 0. */
       *((int *)*esp) = 0;
       *esp += sizeof(int);
-      // set argc
+      /* Set argc. */
       *((int *)*esp) = argc;
       *esp += sizeof(int);
-      // set argv
+      /* Set argv. */
       *((char **)*esp) = (char *)*esp + sizeof(char *);
       *esp += sizeof(char *);
-      // set argv addresses
+
+      /* Set argv addresses. */
       for (int i = 0; i < argc; i++)
       {
         *((char **)*esp) = argv[i];
         *esp += sizeof(char *);
       }
-      // set null sentinel
+
+      /* Set null sentinel. */
       *((char **)*esp) = NULL;
 
-      // set stack pointer to final location below return address
+      /* Set esp to final location (below the return address). */
       *esp = esp_return_start;
     }
     else

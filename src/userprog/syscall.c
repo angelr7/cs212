@@ -126,13 +126,15 @@ syscall_handler(struct intr_frame *f)
   }
 }
 
+/*Search through fd list and return fd_elem with corresponding fd */
 static struct list_elem *
 list_find_fd_elem(struct thread *t, int fd)
 {
   struct list_elem *e;
 
-  for (e = list_begin(&t->fd_list); e != list_end(&t->fd_list);
-       e = list_next(e))
+  for (e = list_begin(&t->fd_list); 
+    e != list_end(&t->fd_list);
+    e = list_next(e))
   {
     struct fd_elem *f = list_entry(e, struct fd_elem, elem);
     if (f->fd == fd)
@@ -142,6 +144,7 @@ list_find_fd_elem(struct thread *t, int fd)
   return NULL;
 }
 
+/*Verify pointer address sent to us, if buffer validate that end byte is also valid */
 static void
 verify_pointer(const void *pointer, int size)
 {
@@ -160,12 +163,15 @@ verify_pointer(const void *pointer, int size)
   }
 }
 
+/*Halt program*/
 static void
 halt(void)
 {
   shutdown_power_off();
 }
 
+/*Exit process and free fds and child_processes. If 
+this process is the last one using child_process free it*/
 void exit_handler(int status)
 {
   struct thread *cur = thread_current();
@@ -175,20 +181,24 @@ void exit_handler(int status)
   struct child_process *process_info = cur->process;
   process_info->status = status;
 
-  /*loop through children if child exited free its corresponding child_process*/
+  /*loop through children if child exited free 
+  its corresponding child_process*/
   for (struct list_elem *e = list_begin(&cur->children); 
-  e != list_end(&cur->children); 
-  e = list_next(e)) 
+    e != list_end(&cur->children); 
+    e = list_next(e)) 
   {
     struct child_process *child = list_entry(e, struct child_process, wait_elem);
     if (child->tried_to_free) 
       free(child);
     else child->tried_to_free = true;
   }
-
+  /*loop through fd_list and free fds*/
   lock_acquire(&filesys_lock);
   struct fd_elem *prev = NULL;
-  for (struct list_elem *e = list_begin(&cur->fd_list); e != list_end(&cur->fd_list); e = list_next(e)) {
+  for (struct list_elem *e = list_begin(&cur->fd_list); 
+    e != list_end(&cur->fd_list); 
+    e = list_next(e)) 
+  {
     if (prev) free(prev);
     struct fd_elem *fd_elem = list_entry(e, struct fd_elem, elem);
     file_close(fd_elem->file);
@@ -203,7 +213,8 @@ void exit_handler(int status)
     free(process_info);
   
   /*if parent has not exited then wake up parent in process_wait*/
-  else {
+  else 
+  {
     lock_acquire(&process_info->wait_lock);
     cond_signal(&process_info->wait_cond, &process_info->wait_lock);
     lock_release(&process_info->wait_lock);
@@ -214,6 +225,7 @@ void exit_handler(int status)
   thread_exit();
 }
 
+/*Execute file*/
 static void
 exec(const char *file, struct intr_frame *f)
 {
@@ -221,12 +233,14 @@ exec(const char *file, struct intr_frame *f)
   f->eax = process_execute(file);
 }
 
+/*Make parent wait for child with pid pid*/
 static void
 wait(pid_t pid, struct intr_frame *f)
 {
   f->eax = process_wait(pid);
 }
 
+/*Create file*/
 static void
 create(const char *file, unsigned initial_size, struct intr_frame *f)
 {
@@ -237,6 +251,7 @@ create(const char *file, unsigned initial_size, struct intr_frame *f)
   f->eax = success;
 }
 
+/*Remove file*/
 static void
 remove(const char *file, struct intr_frame *f)
 {
@@ -247,6 +262,7 @@ remove(const char *file, struct intr_frame *f)
   f->eax = success;
 }
 
+/*Open file*/
 static void
 open(const char *file, struct intr_frame *f)
 {
@@ -269,6 +285,7 @@ open(const char *file, struct intr_frame *f)
   f->eax = fd;
 }
 
+/*Get filesize of file descriptor fd*/
 static void
 filesize(int fd, struct intr_frame *f)
 {
@@ -285,6 +302,7 @@ filesize(int fd, struct intr_frame *f)
   f->eax = size;
 }
 
+/*Read from file*/
 static void
 read(int fd, void *buffer, unsigned length, struct intr_frame *f)
 {
@@ -311,6 +329,7 @@ read(int fd, void *buffer, unsigned length, struct intr_frame *f)
   return;
 }
 
+/*Write to file*/
 static void
 write(int fd, const void *buffer, unsigned int length, struct intr_frame *f)
 {
@@ -335,6 +354,7 @@ write(int fd, const void *buffer, unsigned int length, struct intr_frame *f)
   f->eax = bytes_written;
 }
 
+/*Seek */
 static void
 seek(int fd, unsigned position)
 {
@@ -349,6 +369,7 @@ seek(int fd, unsigned position)
   lock_release(&filesys_lock);
 }
 
+/*Tell */
 static void
 tell(int fd, struct intr_frame *f)
 {
@@ -364,7 +385,7 @@ tell(int fd, struct intr_frame *f)
   lock_release(&filesys_lock);
   f->eax = position;
 }
-
+/*Close file*/
 static void
 close(int fd)
 {

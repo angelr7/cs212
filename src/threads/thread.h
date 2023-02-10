@@ -21,19 +21,27 @@ enum thread_status
 typedef int tid_t;
 #define TID_ERROR ((tid_t)-1) /* Error value for tid_t. */
 
+/*Global lock used in process and syscall files
+which secures that the child_process struct is not being
+exposed to race conditions */
 struct lock process_lock;
+
+/*This struct is in charge of all commmunication
+between parent and a particular child. Makes it 
+possible to wait, free correctly, pass error, etc*/
 struct child_process
 {
-   tid_t tid;
-   int status;
-   bool wait_called;
-   bool child_error;
-   bool tried_to_free;
-   char *file_name;
-   struct lock wait_lock;
-   struct list_elem wait_elem;
-   struct condition wait_cond;
-   struct semaphore wait_child;
+   tid_t tid;                    /*Threads tid*/
+   int status;                   /*Threads status*/
+   bool wait_called;             /*Has parent already called process_wait on child*/
+   bool child_error;             /*Did the child encounter an error*/
+   bool tried_to_free;           /*Did the parent try to free this child*/
+   char *file_name;              /*Child thread file name*/
+   struct semaphore wait_child;  /*Semaphore to make parent wait for start process to finish before finishing exec_proces*/
+   struct list_elem wait_elem;   /*Elem for child to be put in parents list*/
+   struct condition wait_cond;   /*Cond variable to wake up parent in process_wait when child exits*/
+   struct lock wait_lock;        /*Lock to wake up parent in process_wait when child exits*/
+
 };
 
 /* Thread priorities. */
@@ -103,31 +111,25 @@ struct thread
    tid_t tid;                 /* Thread identifier. */
    enum thread_status status; /* Thread state. */
    char name[16];             /* Name (for debugging purposes). */
-   char exec_name[16];
-   struct file *exec_file;
-   // struct condition wait_cond;
-   // struct lock wait_lock;
+   char exec_name[16];        /* Name used to print */
+   struct file *exec_file;    /* File being executed*/
    uint8_t *stack;           /* Saved stack pointer. */
    int priority;             /* Priority. */
    struct list_elem allelem; /* List element for all threads list. */
-                             //  bool process_thread;                /* Whether this thread is a thread owned by a process. */
-   int fd;
-   struct list fd_list;
-   // struct semaphore wait_child;
-   // bool child_error;
-
+   int fd;                   /* Threads fd */
+   struct list fd_list;      /* Threads fd_list */
    /* Shared between thread.c and synch.c. */
    struct list_elem elem; /* List element. */
 
 #ifdef USERPROG
    /* Owned by userprog/process.c. */
    uint32_t *pagedir; /* Page directory. */
+   struct list children; /*List of this threads chilldren*/
+
+   /*This threads child_process to allow 
+   conversation between parent and child*/
+   struct child_process *process; 
 #endif
-
-   struct list children;
-   struct thread *parent;
-   struct child_process *process;
-
    /* Owned by thread.c. */
    unsigned magic; /* Detects stack overflow. */
 };

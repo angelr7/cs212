@@ -522,7 +522,8 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
 }
 
 /* Create a minimal stack by mapping a zeroed page at the top of
-   user virtual memory. */
+   user virtual memory. Adding arguements to the stack being 
+   passed by the executing program*/
 static bool
 setup_stack(void **esp, const char *cmdline)
 {

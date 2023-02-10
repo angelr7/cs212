@@ -451,7 +451,6 @@ init_thread(struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
   list_init(&t->children);
-  t->parent = running_thread();
   t->fd = 2;
   list_init(&t->fd_list);
 

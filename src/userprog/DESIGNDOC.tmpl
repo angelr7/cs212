@@ -83,7 +83,7 @@ struct thread
    struct file *exec_file;    /* File being executed*/
    int fd;                   /* Threads fd */
    struct list fd_list;      /* Threads fd_list */
-   struct list children; /*List of this threads chilldren*/
+   struct list children;  /*List of child_process's created by this threads*/
    struct child_process *process; /*Pointer to the child_process of this thread*/
 };
 
@@ -260,7 +260,7 @@ Case 5: Special case, Both exit simultaneously:
     Because of our use of locking through process lock one will always
     finish first and we will arrive in one of the 4 cases above.
 
-Case 6: Child never exits, Parent never exits:
+Case 6: Special Case Child never exits, Parent never exits:
     Will run out of memory and will be caught and return with -1
 
 ---- RATIONALE ----
@@ -273,6 +273,7 @@ Case 6: Child never exits, Parent never exits:
 
 >> B11: The default tid_t to pid_t mapping is the identity mapping.
 >> If you changed it, what advantages are there to your approach?
+    
     We did not change the identity mapping in our approach.
 
                SURVEY QUESTIONS

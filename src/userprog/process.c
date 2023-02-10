@@ -49,11 +49,11 @@ tid_t process_execute(const char *file_name)
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
-  // 
+  //
 
   /* Set the thread's values to support child processes */
   struct thread *t = thread_current();
-  struct child_process *child = malloc (sizeof (struct child_process));
+  struct child_process *child = malloc(sizeof(struct child_process));
   child->tid = tid;
   child->status = -2;
   child->wait_called = false;
@@ -62,16 +62,21 @@ tid_t process_execute(const char *file_name)
   lock_release(&process_lock);
   sema_down(&t->wait_child);
 
-// loop through elems find child and check if it changed
-// we can also put the $alllist elem in the struct we are working with 
-// restructure our struct so children add themselves to parents list  
-// once we do that we know that the parent will have this updated, issue
+  if (t->child_error)
+  {
+    t->child_error = true;
+    return -1;
+  }
+
+  // loop through elems find child and check if it changed
+  // we can also put the $alllist elem in the struct we are working with
+  // restructure our struct so children add themselves to parents list
+  // once we do that we know that the parent will have this updated, issue
 
   if (tid == TID_ERROR)
     palloc_free_page(fn_copy);
   return tid;
 }
-
 
 /* A thread function that loads a user process and starts it
    running. */
@@ -92,17 +97,16 @@ start_process(void *file_name_)
   success = load(file_name, &if_.eip, &if_.esp);
   /* If load failed, quit. */
   palloc_free_page(file_name);
-  // issue is that success 
+  // issue is that success
   // if (success)
-  sema_up(&thread_current()->parent->wait_child);
+  struct thread *parent = thread_current()->parent;
   if (!success)
-    {
-      // thread_current()->status = -1;
-      // sema_up(&thread_current()->parent->wait_child);
-      // thread_exit();
-      exit_handler(-1);
-    }
-
+  {
+    parent->child_error = true;
+    sema_up(&parent->wait_child);
+    thread_exit();
+  }
+  sema_up(&parent->wait_child);
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -130,7 +134,8 @@ int process_wait(tid_t child_tid)
 {
   bool lock_released = false;
   struct thread *t = thread_current();
-  if (list_empty(&t->children)) return -1;
+  if (list_empty(&t->children))
+    return -1;
   lock_acquire(&process_lock);
   for (
       struct list_elem *e = list_begin(&t->children);
@@ -138,7 +143,7 @@ int process_wait(tid_t child_tid)
       e = list_next(e))
   {
     struct child_process *child = list_entry(e, struct child_process, wait_elem);
-    
+
     if (child->tid == child_tid)
     {
       lock_release(&process_lock);
@@ -155,7 +160,7 @@ int process_wait(tid_t child_tid)
         
       else
       {
-        while(child->status == -2)
+        while (child->status == -2)
         {
           lock_acquire(&t->wait_lock);
           cond_wait(&t->wait_cond, &t->wait_lock);
@@ -166,7 +171,7 @@ int process_wait(tid_t child_tid)
       }
     }
   }
-  if (!lock_released) 
+  if (!lock_released)
     lock_release(&process_lock);
 
   return -1;

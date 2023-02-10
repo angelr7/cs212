@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <syscall-nr.h>
+#include "devices/shutdown.h"
 #include "userprog/process.h"
 #include "threads/interrupt.h"
 #include "threads/synch.h"
@@ -18,22 +19,21 @@ typedef int pid_t;
 static struct lock filesys_lock;
 static bool filesys_lock_initialized = false;
 
-
 static void syscall_handler(struct intr_frame *);
 static void verify_pointer(const void *pointer, int size);
 static void halt(void) NO_RETURN;
 // static void exit_handler(int status) NO_RETURN;
-static void exec (const char *file, struct intr_frame *f);
-static void wait (pid_t pid_t, struct intr_frame *f);
-static void create (const char *file, unsigned initial_size, struct intr_frame *f);
-static void remove (const char *file, struct intr_frame *f);
-static void open (const char *file, struct intr_frame *f);
-static void filesize (int fd, struct intr_frame *f);
-static void read (int fd, void *buffer, unsigned length, struct intr_frame *f);
-static void write (int fd, const void *buffer, unsigned int length, struct intr_frame *f);
-static void seek (int fd, unsigned position);
-static void tell (int fd, struct intr_frame *f);
-static void close (int fd);
+static void exec(const char *file, struct intr_frame *f);
+static void wait(pid_t pid_t, struct intr_frame *f);
+static void create(const char *file, unsigned initial_size, struct intr_frame *f);
+static void remove(const char *file, struct intr_frame *f);
+static void open(const char *file, struct intr_frame *f);
+static void filesize(int fd, struct intr_frame *f);
+static void read(int fd, void *buffer, unsigned length, struct intr_frame *f);
+static void write(int fd, const void *buffer, unsigned int length, struct intr_frame *f);
+static void seek(int fd, unsigned position);
+static void tell(int fd, struct intr_frame *f);
+static void close(int fd);
 
 struct fd_elem
 {
@@ -42,8 +42,7 @@ struct fd_elem
   struct list_elem elem;
 };
 
-void
-syscall_init (void) 
+void syscall_init(void)
 {
   intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
@@ -84,48 +83,47 @@ syscall_handler(struct intr_frame *f)
 
   // call syscall function
   switch (syscall_num)
-    {
-    case SYS_HALT:
-      halt();
-      break;
-    case SYS_EXIT:
-      exit_handler((int) arg1);
-      break;
-    case SYS_EXEC:
-      exec((const char*) arg1, f);
-      break;
-    case SYS_WAIT:
-      wait((pid_t) arg1, f);
-      break;
-    case SYS_CREATE:
-      create((const char*) arg1, (unsigned int) arg2, f);
-      break;
-    case SYS_REMOVE:
-      remove((const char*) arg1, f);
-      break;
-    case SYS_OPEN:
-      open((const char*) arg1, f);
-      break;
-    case SYS_FILESIZE:
-      filesize((int) arg1, f);
-      break;
-    case SYS_READ:
-      read((int) arg1, (void *) arg2, (unsigned int) arg3, f);
-      break;
-    case SYS_WRITE:
-      write((int) arg1, (const void *) arg2, (unsigned int) arg3, f);
-      break;
-    case SYS_SEEK:
-      seek((int) arg1, (unsigned int) arg2);
-      break;
-    case SYS_TELL:
-      tell((int) arg1, f);
-      break;
-    case SYS_CLOSE:
-      close((int) arg1);
-      break;
-    }
-
+  {
+  case SYS_HALT:
+    halt();
+    break;
+  case SYS_EXIT:
+    exit_handler((int)arg1);
+    break;
+  case SYS_EXEC:
+    exec((const char *)arg1, f);
+    break;
+  case SYS_WAIT:
+    wait((pid_t)arg1, f);
+    break;
+  case SYS_CREATE:
+    create((const char *)arg1, (unsigned int)arg2, f);
+    break;
+  case SYS_REMOVE:
+    remove((const char *)arg1, f);
+    break;
+  case SYS_OPEN:
+    open((const char *)arg1, f);
+    break;
+  case SYS_FILESIZE:
+    filesize((int)arg1, f);
+    break;
+  case SYS_READ:
+    read((int)arg1, (void *)arg2, (unsigned int)arg3, f);
+    break;
+  case SYS_WRITE:
+    write((int)arg1, (const void *)arg2, (unsigned int)arg3, f);
+    break;
+  case SYS_SEEK:
+    seek((int)arg1, (unsigned int)arg2);
+    break;
+  case SYS_TELL:
+    tell((int)arg1, f);
+    break;
+  case SYS_CLOSE:
+    close((int)arg1);
+    break;
+  }
 }
 
 static void
@@ -140,14 +138,14 @@ list_find_fd_elem(struct thread *t, int fd)
 {
   struct list_elem *e;
 
-  for (e = list_begin (&t->fd_list); e != list_end (&t->fd_list);
-        e = list_next (e))
-    {
-      struct fd_elem *f = list_entry (e, struct fd_elem, elem);
-      if (f->fd == fd)
-        return e;
-    }
-  
+  for (e = list_begin(&t->fd_list); e != list_end(&t->fd_list);
+       e = list_next(e))
+  {
+    struct fd_elem *f = list_entry(e, struct fd_elem, elem);
+    if (f->fd == fd)
+      return e;
+  }
+
   return NULL;
 }
 
@@ -175,8 +173,7 @@ halt(void)
   shutdown_power_off();
 }
 
-void
-exit_handler(int status)
+void exit_handler(int status)
 {
   struct thread *cur = thread_current();
   uint32_t *pd;
@@ -208,7 +205,7 @@ exit_handler(int status)
 static void
 exec(const char *file, struct intr_frame *f)
 {
-  verify_pointer((void *) file, sizeof(char *));
+  verify_pointer((void *)file, sizeof(char *));
   f->eax = process_execute(file);
 }
 
@@ -221,7 +218,7 @@ wait(pid_t pid, struct intr_frame *f)
 static void
 create(const char *file, unsigned initial_size, struct intr_frame *f)
 {
-  verify_pointer((void *) file, sizeof(char *));
+  verify_pointer((void *)file, sizeof(char *));
   lock_acquire(&filesys_lock);
   bool success = filesys_create(file, initial_size);
   lock_release(&filesys_lock);
@@ -231,7 +228,7 @@ create(const char *file, unsigned initial_size, struct intr_frame *f)
 static void
 remove(const char *file, struct intr_frame *f)
 {
-  verify_pointer((void *) file, sizeof(char *));
+  verify_pointer((void *)file, sizeof(char *));
   lock_acquire(&filesys_lock);
   bool success = filesys_remove(file);
   lock_release(&filesys_lock);
@@ -239,9 +236,9 @@ remove(const char *file, struct intr_frame *f)
 }
 
 static void
-open (const char *file, struct intr_frame *f)
+open(const char *file, struct intr_frame *f)
 {
-  verify_pointer((void *) file, sizeof(char *));
+  verify_pointer((void *)file, sizeof(char *));
   lock_acquire(&filesys_lock);
   struct file *opened_file = filesys_open(file);
   lock_release(&filesys_lock);
@@ -261,7 +258,7 @@ open (const char *file, struct intr_frame *f)
 }
 
 static void
-filesize (int fd, struct intr_frame *f)
+filesize(int fd, struct intr_frame *f)
 {
   struct list_elem *fd_list_elem = list_find_fd_elem(thread_current(), fd);
   if (fd_list_elem == NULL)
@@ -277,7 +274,7 @@ filesize (int fd, struct intr_frame *f)
 }
 
 static void
-read (int fd, void *buffer, unsigned length, struct intr_frame *f)
+read(int fd, void *buffer, unsigned length, struct intr_frame *f)
 {
   verify_pointer(buffer, sizeof(void *));
   if (fd == 0)
@@ -312,7 +309,7 @@ write(int fd, const void *buffer, unsigned int length, struct intr_frame *f)
     f->eax = length;
     return;
   }
-  
+
   struct list_elem *fd_list_elem = list_find_fd_elem(thread_current(), fd);
   if (fd_list_elem == NULL)
   {
@@ -341,7 +338,7 @@ seek(int fd, unsigned position)
 }
 
 static void
-tell (int fd, struct intr_frame *f)
+tell(int fd, struct intr_frame *f)
 {
   struct list_elem *fd_list_elem = list_find_fd_elem(thread_current(), fd);
   if (fd_list_elem == NULL)

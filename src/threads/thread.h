@@ -101,13 +101,14 @@ struct thread
    struct file *exec_file;
    struct condition wait_cond;
    struct lock wait_lock;
-   uint8_t *stack;            /* Saved stack pointer. */
-   int priority;              /* Priority. */
-   struct list_elem allelem;  /* List element for all threads list. */
-                              //  bool process_thread;                /* Whether this thread is a thread owned by a process. */
-    int fd;
-    struct list fd_list;
-    struct semaphore wait_child;
+   uint8_t *stack;           /* Saved stack pointer. */
+   int priority;             /* Priority. */
+   struct list_elem allelem; /* List element for all threads list. */
+                             //  bool process_thread;                /* Whether this thread is a thread owned by a process. */
+   int fd;
+   struct list fd_list;
+   struct semaphore wait_child;
+   bool child_error;
 
    /* Shared between thread.c and synch.c. */
    struct list_elem elem; /* List element. */

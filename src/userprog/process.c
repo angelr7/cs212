@@ -63,14 +63,9 @@ tid_t process_execute(const char *file_name)
 
   if (t->child_error)
   {
-    t->child_error = true;
+    t->child_error = false;
     return -1;
   }
-
-  // loop through elems find child and check if it changed
-  // we can also put the $alllist elem in the struct we are working with
-  // restructure our struct so children add themselves to parents list
-  // once we do that we know that the parent will have this updated, issue
 
   if (tid == TID_ERROR)
     palloc_free_page(fn_copy);

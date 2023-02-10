@@ -8,8 +8,8 @@
 
 >> Fill in the names and email addresses of your group members.
 
-Pilli Cruz-De Jesus <pilli@stanford.edu>
 Angel Ruiz <ar7@stanford.edu>
+Pilli Cruz-De Jesus <pilli@stanford.edu>
 Fabian Luna <luna1206@stanford.edu>
 
 ---- PRELIMINARIES ----
@@ -29,20 +29,63 @@ Fabian Luna <luna1206@stanford.edu>
 >> A1: Copy here the declaration of each new or changed `struct' or
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
+We did not create or modify any structs to implement argument passing. We also
+did not make use of any global or static variables, and did not typedef any 
+structs or other types.
 
 ---- ALGORITHMS ----
 
 >> A2: Briefly describe how you implemented argument parsing.  How do
 >> you arrange for the elements of argv[] to be in the right order?
 >> How do you avoid overflowing the stack page?
+We handle argument passing in the call to setup_stack in the load function. 
+When we create a new process, we create a new thread that runs the 
+start_process function. When this function runs, it calls the load function, 
+which then calls setup_stack. We pass in the entire filename string, 
+including arguments into setup_stack, so we can parse the necessary values 
+and place them in the stack using the esp pointer.
+In setup_stack, we make sure to only begin stack initialization if the page
+is installed successfully. If this is the case, we initialize an argc 
+variable and a 128-length list of char *'s (since pintos can only pass 128
+bytes to the kernel, this is always guaranteed to be able to store all of
+our process' arguments.) We then count the amount of space that is necessary 
+for our non-whitespace characters, making sure to add space for null 
+terminators. After this, we copy our cmdline string, and place it into a 
+loop with strtok_r, so that we pull all of the words out of our string. For
+every word we pull with strtok_r, we make sure to copy that string into 
+the current location of esp, and offset esp downwards to account for the 
+size of that string. After this is done, we make sure that our esp pointer
+is four-byte aligned. With this managed, we then set a "return address" of
+0 and push it on the stack, offestting esp by sizeof(int) afterwards. 
+Finally, we then push the values of argc, the address of argv, and the 
+address of all of the arguments of argv using this same logic. After 
+pushing all values on the stack, we then offset esp one last time to 
+be in its final position, right below PHYS_BASE.
+
 
 ---- RATIONALE ----
-
 >> A3: Why does Pintos implement strtok_r() but not strtok()?
+According to the Linux Programmer's Manual (found by running "man strtok_r"), 
+strtok_r is a reentrant version of strtok. strtok_r maintains its context
+amongst different calls by using the saveptr variable. By doing this, we allow
+multiple strings to be parsed concurrently using strtok_r. Since strtok doesn't 
+have a saveptr variable, we wouldn't be able to parse multiple strings 
+concurrently or parse strings in nested loops with it. 
 
 >> A4: In Pintos, the kernel separates commands into a executable name
 >> and arguments.  In Unix-like systems, the shell does this
 >> separation.  Identify at least two advantages of the Unix approach.
+One advantage of this approach would be that all of our error-handling logic
+can be condensed into the shell, rather than placing this load on the kernel.
+This brings more security into our processing system, because all validation
+is done on the user-side, and not on the kernel side where things are much
+more volatile. There is also one less layer of indirection when the shell 
+has the sole responsibility of parsing commands and subprocessing.
+
+In general, this brings another advantage as well. By removing the need to
+parse and validate these commands in the kernel, the UNIX approach is much 
+more efficent and uses less memory for the kernel.
+
 
                  SYSTEM CALLS
                  ============
@@ -83,7 +126,7 @@ struct thread
    struct file *exec_file;    /* File being executed*/
    int fd;                   /* Threads fd */
    struct list fd_list;      /* Threads fd_list */
-   struct list children;  /*List of child_process's created by this threads*/
+   struct list children; /*List of this threads chilldren*/
    struct child_process *process; /*Pointer to the child_process of this thread*/
 };
 
@@ -194,11 +237,10 @@ struct fd_elem
 Freeing:
     In our program freeing is handled by whoever uses the struct last. 
     This implementation is done using using a boolean in the shared
-    child_process called tried_to_free. This will works regardless of
-    if the parent waits for the child.
+    child_process called tried_to_free. 
 
     If your are process C and are exiting you will check tried_to_free.
-    If true, it means that your parent P has exited and you must free the 
+    If true, it means that your parent has exited and you must free the 
     shared child_process. If tried_to_free is false it means that P 
     is alive and you will NOT free the child_process because P will 
     do it later.
@@ -215,6 +257,15 @@ Freeing:
     be met with our program running out of memory considering our small file
     system and will be forced to exit the programs at some point. 
 
+    Lastly, all processes close their open files in our exit handler. After 
+    freeing all necessary children, each process loops through its list of 
+    open files, and closes each file. In this loop, we also make sure to 
+    free the corresponding fd_elem struct associated with it, since we 
+    initialized it using malloc. Although we free the fd_elem every time, 
+    we use file_close to close our file descriptors. This ensures that we 
+    do not fully close a file until all processes who are accessing it have
+    terminated.
+
 
 Case 1: P alive, waiting on C to exit:
     In the case where P is waiting for C and C has not exited
@@ -227,12 +278,13 @@ Case 1: P alive, waiting on C to exit:
     INITIAL_STATUS will we stop sleeping. Here the wait_lock protects
     wait_cond from any race conditions. 
 
-Case 2: P alive, waiting on C, C already exitted:
+
+
+Case 2: P alive, waiting on C to exit:
 
     In the case where P is waiting for C and C has exited our program
     will return the childs exit status, which is kept updated through
-    the shared child_process. Any changes to child_process are protected
-    by process_lock and can not have race conditions.  
+    the shared child_process. 
 
 In both cases 1 and 2 P will be the last process to use child_process.
 Therefore as described above in our Freeing section the shared 
@@ -241,27 +293,31 @@ This makes it so that we have no race conditions for this struct
 because only the parent will have access to the child_process since
 the child will have exited when we eventually free. 
 
-Case 3: P Exit, no waiting, C alive:
+Case 3: P Exit C exiting:
+
     In the case where P has exited and C is running. C will not need any
     information inside of P since all shared information will be kept
-    alive through the shared child_process. When C is exiting we will
-    see that since the parent has exited tried_to_free = true. Therefore
-    C will free the shared child_process and will not signal the parent 
-    since the parent has already exited.  
+    alive through the shared child_process. When C is exiting we check to 
+    see if the parent has exited. If so we will free ourselves and will not
+    signal the parent as in the previous case.
 
-Case 4: P Exits after C exits, no waiting:
-    C exits, but parent exits, parent will not need any information from 
-    inside of the child thread and will also not wait for it. There will
-    be no race conditions because since P is the last process to exit
-    it will close child_process. As described in the Freeing section. 
+    This is done using a condition variable wait_cond and lock wait_lock
+    which are shared only between C and P through child_process.
+    We put the parent to sleep with wait_cond in a while loop ensuring 
+    that only if the child status which we are waiting on is no longer 
+    INITIAL_STATUS will we stop sleeping. Here the wait_lock protects
+    wait_cond from any race conditions. 
 
-Case 5: Special case, Both exit simultaneously:
-    We do not need to worry about this case because it is not possible.
-    Because of our use of locking through process lock one will always
-    finish first and we will arrive in one of the 4 cases above.
+    In the case where P is waiting for C and C has exited our program
+    will return the childs exit status, which is kept updated through
+    the shared child_process. 
 
-Case 6: Special Case Child never exits, Parent never exits:
-    Will run out of memory and will be caught and return with -1
+    In both cases Since C will be the last process to use child_process 
+    the shared child_process struct will not be freed until C exits. 
+    This makes it so that we have no race conditions for this struct 
+    because only C will have access to the child_process since P will 
+    have exited.
+   
 
 ---- RATIONALE ----
 
@@ -273,8 +329,6 @@ Case 6: Special Case Child never exits, Parent never exits:
 
 >> B11: The default tid_t to pid_t mapping is the identity mapping.
 >> If you changed it, what advantages are there to your approach?
-    
-    We did not change the identity mapping in our approach.
 
                SURVEY QUESTIONS
                ================
@@ -294,10 +348,6 @@ the quarter.
 >> Is there some particular fact or hint we should give students in
 >> future quarters to help them solve the problems?  Conversely, did you
 >> find any of our guidance to be misleading?
-
-It would be helpful if the questions were laid out more clearly 
-in the design doc when thinking about synchornization between different
-cases. 
 
 >> Do you have any suggestions for the TAs to more effectively assist
 >> students, either for future quarters or the remaining projects?

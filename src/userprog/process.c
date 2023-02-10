@@ -533,7 +533,7 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
    user virtual memory. Adding arguements to the stack being 
    passed by the executing program*/
 static bool
-setup_stack(void **esp, const char *cmdline)
+(void **esp, const char *cmdline)
 {
   uint8_t *kpage;
   bool success = false;
@@ -631,7 +631,7 @@ setup_stack(void **esp, const char *cmdline)
       /* Set null sentinel. */
       *((char **)*esp) = NULL;
 
-      /* Set esp to final location (below the return address). */
+      /* Set esp to final location */
       *esp = esp_return_start;
     }
     else

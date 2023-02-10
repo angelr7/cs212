@@ -4,6 +4,7 @@
 #include "userprog/syscall.h"
 #include "userprog/pagedir.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <syscall-nr.h>
 #include "devices/shutdown.h"
@@ -248,10 +249,10 @@ open(const char *file, struct intr_frame *f)
   }
   struct thread *t = thread_current();
   int fd = t->fd;
-  struct fd_elem opened_fd;
-  opened_fd.fd = fd;
-  opened_fd.file = opened_file;
-  list_push_back(&t->fd_list, &opened_fd.elem);
+  struct fd_elem *opened_fd = malloc (sizeof (struct fd_elem));;
+  opened_fd->fd = fd;
+  opened_fd->file = opened_file;
+  list_push_back(&t->fd_list, &opened_fd->elem);
   t->fd++;
   f->eax = fd;
 }

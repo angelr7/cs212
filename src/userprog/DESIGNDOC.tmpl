@@ -77,13 +77,6 @@ struct child_process
 };
 
 
-struct fd_elem
-{
-  int fd;
-  struct file *file;
-  struct list_elem elem;
-};
-
 struct thread
 {
    char exec_name[16];        /* Name used to print */
@@ -91,7 +84,16 @@ struct thread
    int fd;                   /* Threads fd */
    struct list fd_list;      /* Threads fd_list */
    struct list children; /*List of this threads chilldren*/
-   struct child_process *process; /*Child_process of this thread*/
+   struct child_process *process; /*Pointer to the child_process of this thread*/
+};
+
+static struct lock filesys_lock;
+static bool filesys_lock_initialized = false;
+struct fd_elem
+{
+  int fd;
+  struct file *file;
+  struct list_elem elem;
 };
 
 >> B2: Describe how file descriptors are associated with open files.
@@ -112,6 +114,31 @@ struct thread
 
 >> B5: Briefly describe your implementation of the "wait" system call
 >> and how it interacts with process termination.
+    Our wait implemententation checks to see if it has children if not 
+    it will return -1. Then it will loop through children, which is
+    a list of struct child_process which the current thread created,
+    looking for the child_process with the requested tid. If not found 
+    return -1. If found check if wait has been called, if so return -1.
+    Otherwise check if the child->status != INITIAL_STATUS if so return
+    status. Otherwise we fall into the most interesting case.
+
+    When wait has not been called previously on the child, and 
+    status = INITIAL_STATUS, then we must wait for child to exit. 
+    This is done using a condition variable wait_cond and lock wait_lock
+    which are shared between the child and parent through child_process.
+    We put the parent to sleep with wait_cond in a while loop ensuring 
+    that only if the child status which we are waiting on is no longer 
+    INITIAL_STATUS will we stop sleeping. 
+
+    We wake up the parent thread in the bottom of exit_handler. When
+    we are in the situation where the parent has not yet exited, we
+    know it must be waiting on the child to exit. In this case we 
+    cond_signal the parent by using the shared wait_cond and protect
+    the signal using the shared wait_lock to wake up the parent. 
+
+    We also implemented freeing so that the last process to exit is the
+    one which frees. This is handled through a boolean in the child_process 
+    struct. 
 
 >> B6: Any access to user program memory at a user-specified address
 >> can fail due to a bad pointer value.  Such accesses must cause the

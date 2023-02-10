@@ -125,10 +125,7 @@ struct thread
    /* Owned by userprog/process.c. */
    uint32_t *pagedir; /* Page directory. */
    struct list children; /*List of this threads chilldren*/
-
-   /*This threads child_process to allow 
-   conversation between parent and child*/
-   struct child_process *process; 
+   struct child_process *process; /*Pointer to the child_process of this thread*/
 #endif
    /* Owned by thread.c. */
    unsigned magic; /* Detects stack overflow. */

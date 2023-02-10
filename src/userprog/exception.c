@@ -5,6 +5,7 @@
 #include "userprog/gdt.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -137,7 +138,7 @@ page_fault (struct intr_frame *f)
      (#PF)". */
   asm ("movl %%cr2, %0" : "=r" (fault_addr));
 
-  if (fault_addr == NULL)
+  if (fault_addr == NULL || is_kernel_vaddr(fault_addr))
    exit_handler(-1); 
 
   /* Turn interrupts back on (they were only off so that we could

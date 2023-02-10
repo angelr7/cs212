@@ -126,13 +126,6 @@ syscall_handler(struct intr_frame *f)
   }
 }
 
-// static void
-// free_resources(void)
-// {
-//   // free locks and close file descriptors
-//   return;
-// }
-
 static struct list_elem *
 list_find_fd_elem(struct thread *t, int fd)
 {

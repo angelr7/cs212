@@ -98,6 +98,7 @@ struct thread
    enum thread_status status; /* Thread state. */
    char name[16];             /* Name (for debugging purposes). */
    char exec_name[16];
+   struct file *exec_file;
    struct condition wait_cond;
    struct lock wait_lock;
    uint8_t *stack;            /* Saved stack pointer. */

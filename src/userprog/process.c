@@ -9,6 +9,7 @@
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
+#include "userprog/syscall.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
@@ -93,12 +94,13 @@ start_process(void *file_name_)
   palloc_free_page(file_name);
   // issue is that success 
   // if (success)
-    sema_up(&thread_current()->parent->wait_child);
+  sema_up(&thread_current()->parent->wait_child);
   if (!success)
     {
       // thread_current()->status = -1;
       // sema_up(&thread_current()->parent->wait_child);
-      thread_exit();
+      // thread_exit();
+      exit_handler(-1);
     }
 
 
@@ -146,8 +148,11 @@ int process_wait(tid_t child_tid)
         return -1;
 
       if (child->status != -2)
+      {
+        child->wait_called = true;
         return child->status;
-
+      }
+        
       else
       {
         while(child->status == -2)
@@ -156,6 +161,7 @@ int process_wait(tid_t child_tid)
           cond_wait(&t->wait_cond, &t->wait_lock);
           lock_release(&t->wait_lock);
         }
+        child->wait_called = true;
         return child->status;
       }
     }
@@ -170,6 +176,7 @@ int process_wait(tid_t child_tid)
 void process_exit(void)
 {
   struct thread *cur = thread_current();
+  file_close(cur->exec_file);
   uint32_t *pd;
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -303,8 +310,12 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
 
   /* Open executable file. */
   file = filesys_open(extracted_file_name);
+  t->exec_file = file;
+  file_deny_write(file);
   if (file == NULL)
   {
+
+    // exit_handler(-1);
     printf("load: %s: open failed\n", extracted_file_name);
     goto done;
   }
@@ -385,7 +396,7 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
 
 done:
   /* We arrive here whether the load is successful or not. */
-  file_close(file);
+  // file_close(file);
   return success;
 }
 

@@ -41,8 +41,10 @@ tid_t process_execute(const char *file_name)
   strlcpy(fn_copy, file_name, PGSIZE);
 
   struct thread *t = thread_current();
+
+  /* Initialize child_process for new child thread being created */  
   struct child_process *child = malloc(sizeof(struct child_process));
-  child->status = -2;
+  child->status = INITIAL_STATUS;
   child->wait_called = false;
   child->child_error = false;
   child->tried_to_free = false;
@@ -53,21 +55,22 @@ tid_t process_execute(const char *file_name)
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create(file_name, PRI_DEFAULT, start_process, child);
-
-  /* Set the thread's values to support child processes */
   child->tid = tid;
+
+  /* Add child_process to parents list of children */
   lock_acquire(&process_lock);
   list_push_back(&t->children, &child->wait_elem);
   lock_release(&process_lock);
   sema_down(&child->wait_child);
 
+  /* If child has error return -1 */
   if (child->child_error)
-  {
     return -1;
-  }
-
   if (tid == TID_ERROR)
+  {
+    // tid = TID_ERROR;
     palloc_free_page(fn_copy);
+  }
   return tid;
 }
 
@@ -94,6 +97,8 @@ start_process(void *file_name_)
   /* If load failed, quit. */
   palloc_free_page(file_name);
 
+  /* If thread failed to load set child_error in child_process 
+  to true and sema_up*/
   if (!success)
   {
     child->child_error = true;
@@ -129,9 +134,12 @@ int process_wait(tid_t child_tid)
 {
   bool lock_released = false;
   struct thread *t = thread_current();
+  /*if cur_thread has no children then this tid can not be its child*/
   if (list_empty(&t->children))
     return -1;
   lock_acquire(&process_lock);
+  /*loop through children and find child_process with matching tid
+  once we find this child return tid or -1*/
   for (
       struct list_elem *e = list_begin(&t->children);
       e != list_end(&t->children);
@@ -141,15 +149,17 @@ int process_wait(tid_t child_tid)
 
     if (child->tid == child_tid)
     {
-      // could still be a race condition here. might need to release the lock
-      // in a different way.
+    /*release lock since only cur_thread modifies this child
+     once initalized*/
       lock_release(&process_lock);
       lock_released = true;
-
+      /*if wait already called return -1*/
       if (child->wait_called)
         return -1;
 
-      if (child->status != -2)
+      /*if child status has been changed therefore thread 
+      has exited return status*/
+      if (child->status != INITIAL_STATUS)
       {
         child->wait_called = true;
         return child->status;
@@ -157,7 +167,9 @@ int process_wait(tid_t child_tid)
 
       else
       {
-        while (child->status == -2)
+        /* wait for child to change its status once it does 
+        set wait_called to true, and return status*/
+        while (child->status == INITIAL_STATUS)
         {
           lock_acquire(&child->wait_lock);
           cond_wait(&child->wait_cond, &child->wait_lock);
@@ -170,7 +182,7 @@ int process_wait(tid_t child_tid)
   }
   if (!lock_released)
     lock_release(&process_lock);
-
+  /*if tid not found then that tid is not one of threads children*/
   return -1;
 }
 

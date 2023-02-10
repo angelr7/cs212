@@ -22,7 +22,7 @@ static bool filesys_lock_initialized = false;
 static void syscall_handler(struct intr_frame *);
 static void verify_pointer(const void *pointer, int size);
 static void halt(void) NO_RETURN;
-// static void exit_handler(int status) NO_RETURN;
+void exit_handler(int status);
 static void exec(const char *file, struct intr_frame *f);
 static void wait(pid_t pid_t, struct intr_frame *f);
 static void create(const char *file, unsigned initial_size, struct intr_frame *f);
@@ -182,16 +182,22 @@ void exit_handler(int status)
   struct child_process *process_info = cur->process;
   process_info->status = status;
 
-  for (struct list_elem *e = list_begin(&cur->children); e != list_end(&cur->children); e = list_next(e)) {
+  /*loop through children if child exited free its corresponding child_process*/
+  for (struct list_elem *e = list_begin(&cur->children); 
+  e != list_end(&cur->children); 
+  e = list_next(e)) 
+  {
     struct child_process *child = list_entry(e, struct child_process, wait_elem);
     if (child->tried_to_free) 
       free(child);
     else child->tried_to_free = true;
   }
 
+  /*if parent has exited then free yourself*/
   if (process_info->tried_to_free) 
     free(process_info);
-    
+  
+  /*if parent has not exited then wake up parent in process_wait*/
   else {
     lock_acquire(&process_info->wait_lock);
     cond_signal(&process_info->wait_cond, &process_info->wait_lock);
@@ -201,25 +207,6 @@ void exit_handler(int status)
   lock_release(&process_lock);
   printf("%s: exit(%d)\n", cur->exec_name, status);
   thread_exit();
-  // struct list siblings = cur->parent->children;
-  // if (!list_empty(&siblings))
-  // {
-  //   for (
-  //       struct list_elem *e = list_begin(&siblings);
-  //       e != list_end(&siblings);
-  //       e = list_next(e))
-  //   {
-  //     struct child_process *child = list_entry(e, struct child_process, wait_elem);
-  //     if (child->tid == cur->tid)
-  //     {
-  //       child->status = status;
-  //       lock_acquire(&cur->parent->wait_lock);
-  //       cond_signal(&cur->parent->wait_cond, &cur->parent->wait_lock);
-  //       lock_release(&cur->parent->wait_lock);
-  //       break;
-  //     }
-  //   }
-  // }
 }
 
 static void

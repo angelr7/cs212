@@ -21,6 +21,8 @@
 #include "threads/vaddr.h"
 #include "threads/synch.h"
 
+#define CMDLINE_CHAR_LIMIT 128
+
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, void (**eip)(void), void **esp);
 
@@ -299,21 +301,28 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
    Returns true if successful, false otherwise. */
 bool load(const char *file_name, void (**eip)(void), void **esp)
 {
-  // extract file name from command line input
+  struct thread *t = thread_current();
+  struct Elf32_Ehdr ehdr;
+  struct file *file = NULL;
+  off_t file_ofs;
+  bool success = false;
+  int i;
+
+  /* Extract file name from command line input */
   int len = strlen(file_name);
   char file_name_copy[len + 1];
   strlcpy(file_name_copy, file_name, len + 1);
   char *token, *save_ptr;
   token = strtok_r(file_name_copy, " ", &save_ptr);
   char *extracted_file_name = token;
-
-  struct thread *t = thread_current();
   strlcpy(t->exec_name, extracted_file_name, strlen(extracted_file_name) + 1);
-  struct Elf32_Ehdr ehdr;
-  struct file *file = NULL;
-  off_t file_ofs;
-  bool success = false;
-  int i;
+
+  if (len > CMDLINE_CHAR_LIMIT)
+  {
+    printf("load: command line input length exceeded limit of %d bytes",
+            CMDLINE_CHAR_LIMIT);
+    goto done;
+  }
 
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create();
@@ -536,22 +545,17 @@ setup_stack(void **esp, const char *cmdline)
     if (success)
     {
       *esp = PHYS_BASE;
-
-      /* Pintos only allows us to pass 128 bytes of input to the kernel, so holding 128 char*'s 
-         in this array ensures that we always hold AT LEAST the minimum amount of data that's 
-         necessary. */
-      char *argv[128];
       int argc = 0;
 
-      /* Calculate the total number of characters to push, as well as the total number of 
-         arguments. */
+      /* Calculate the total number of characters to push onto stack, as well as the
+         total number of arguments. */
       int len = strlen(cmdline);
       int chars_to_push = 0;
       for (int i = 0; i < len; i++)
       {
-        /* If we aren't at a space, we need to count the current character we're on. If we happen to be 
-           the last character in the cmdline string, we need to add one more character for the string's 
-           null pointer and update argc.
+        /* If we aren't at a space, we need to count the current character we're on. 
+           If we happen to be the last character in the cmdline string, we need to 
+           add one more character for the string's null character and update argc.
          */
         if (cmdline[i] != ' ')
         {
@@ -563,9 +567,9 @@ setup_stack(void **esp, const char *cmdline)
           }
         }
 
-        /* This check ensures that we don't double count spaces, or count leading spaces either. We 
-           only want to update our char count and word count for every period of whitespace between the
-           arguments */
+        /* This check ensures that we don't double count spaces, or count leading spaces
+           either. We only want to update our char count and word count for every period
+           of whitespace between the arguments */
         else if (i > 0 && cmdline[i - 1] != ' ')
         {
           chars_to_push++;
@@ -577,6 +581,9 @@ setup_stack(void **esp, const char *cmdline)
       void *esp_string_start = *esp - chars_to_push;
       *esp = esp_string_start;
 
+      /* Initialize buffer to hold esp addresses of each arg */
+      char *argv[argc];
+
       /* Tokenize cmdline input and push it onto the stack. */
       int i = 0;
       char cmdline_copy[len + 1];
@@ -587,6 +594,7 @@ setup_stack(void **esp, const char *cmdline)
       {
         int arg_len = strlen(token);
         strlcpy(*esp, token, arg_len + 1);
+        /* Store location of esp pointer where arg is stored */
         argv[i++] = *esp;
         *esp += arg_len + 1;
       }

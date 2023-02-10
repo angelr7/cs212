@@ -176,7 +176,6 @@ this process is the last one using child_process free it*/
 void exit_handler(int status)
 {
   struct thread *cur = thread_current();
-  uint32_t *pd;
 
   lock_acquire(&process_lock);
   struct child_process *process_info = cur->process;
@@ -277,12 +276,12 @@ open(const char *file, struct intr_frame *f)
     return;
   }
   struct thread *t = thread_current();
-  int fd = t->fd;
+  int fd = t->cur_fd;
   struct fd_elem *opened_fd = malloc (sizeof (struct fd_elem));;
   opened_fd->fd = fd;
   opened_fd->file = opened_file;
   list_push_back(&t->fd_list, &opened_fd->elem);
-  t->fd++;
+  t->cur_fd++;
   f->eax = fd;
 }
 

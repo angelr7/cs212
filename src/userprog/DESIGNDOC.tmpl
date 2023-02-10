@@ -191,6 +191,84 @@ struct fd_elem
 >> terminates without waiting, before C exits?  After C exits?  Are
 >> there any special cases?
 
+Freeing:
+    In our program freeing is handled by whoever uses the struct last. 
+    This implementation is done using using a boolean in the shared
+    child_process called tried_to_free. 
+
+    If your are process C and are exiting you will check tried_to_free.
+    If true, it means that your parent has exited and you must free the 
+    shared child_process. If tried_to_free is false it means that P 
+    is alive and you will NOT free the child_process because P will 
+    do it later.
+
+    Similarly, if your are P and are exiting you will check tried_to_free.
+    If true, it means that C has exited and you must free the 
+    shared child_process. If tried_to_free is false it means that C 
+    is alive and you will NOT free the child_process because C will 
+    do it later.
+
+    The special case where both a child and parent exit simultaneously is
+    not possible. Our lock process_lock makes sure that both can not happen
+    at once. The other case where a program runs infinitely will most likely
+    be met with our program running out of memory considering our small file
+    system and will be forced to exit the programs at some point. 
+
+
+Case 1: P alive, waiting on C to exit:
+    In the case where P is waiting for C and C has not exited
+    our program waits for C to exit. 
+
+    This is done using a condition variable wait_cond and lock wait_lock
+    which are shared only between C and P through child_process.
+    We put the parent to sleep with wait_cond in a while loop ensuring 
+    that only if the child status which we are waiting on is no longer 
+    INITIAL_STATUS will we stop sleeping. Here the wait_lock protects
+    wait_cond from any race conditions. 
+
+
+
+Case 2: P alive, waiting on C to exit:
+
+    In the case where P is waiting for C and C has exited our program
+    will return the childs exit status, which is kept updated through
+    the shared child_process. 
+
+In both cases 1 and 2 P will be the last process to use child_process.
+Therefore as described above in our Freeing section the shared 
+child_process struct will not be freed until P exits. 
+This makes it so that we have no race conditions for this struct 
+because only the parent will have access to the child_process since
+the child will have exited when we eventually free. 
+
+Case 3: P Exit C Running:
+
+Case 3: P Exit C exiting:
+
+    In the case where P has exited and C is running. C will not need any
+    information inside of P since all shared information will be kept
+    alive through the shared child_process. When C is exiting we check to 
+    see if the parent has exited. If so we will free ourselves and will not
+    signal the parent as in the previous case.
+
+    This is done using a condition variable wait_cond and lock wait_lock
+    which are shared only between C and P through child_process.
+    We put the parent to sleep with wait_cond in a while loop ensuring 
+    that only if the child status which we are waiting on is no longer 
+    INITIAL_STATUS will we stop sleeping. Here the wait_lock protects
+    wait_cond from any race conditions. 
+
+    In the case where P is waiting for C and C has exited our program
+    will return the childs exit status, which is kept updated through
+    the shared child_process. 
+
+    In both cases Since C will be the last process to use child_process 
+    the shared child_process struct will not be freed until C exits. 
+    This makes it so that we have no race conditions for this struct 
+    because only C will have access to the child_process since P will 
+    have exited.
+   
+
 ---- RATIONALE ----
 
 >> B9: Why did you choose to implement access to user memory from the

@@ -16,8 +16,7 @@
 
 typedef int pid_t;
 
-static struct lock filesys_lock;
-static bool filesys_lock_initialized = false;
+
 
 static void syscall_handler(struct intr_frame *);
 static void verify_pointer(const void *pointer, int size);
@@ -35,6 +34,8 @@ static void seek(int fd, unsigned position);
 static void tell(int fd, struct intr_frame *f);
 static void close(int fd);
 
+static struct lock filesys_lock;
+static bool filesys_lock_initialized = false;
 struct fd_elem
 {
   int fd;

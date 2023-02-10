@@ -116,8 +116,8 @@ struct thread
    uint8_t *stack;           /* Saved stack pointer. */
    int priority;             /* Priority. */
    struct list_elem allelem; /* List element for all threads list. */
-   int fd;                   /* Threads fd */
-   struct list fd_list;      /* Threads fd_list */
+   int cur_fd;               /* Thread current fd number to assign */
+   struct list fd_list;      /* Thread open file descriptors list */
    /* Shared between thread.c and synch.c. */
    struct list_elem elem; /* List element. */
 

@@ -193,6 +193,9 @@ void exit_handler(int status)
     else child->tried_to_free = true;
   }
 
+  /*FABIANNNN LOOOK HERE BROOOOO
+  OOOOOO
+  PEEEP THISSSS*/
   lock_acquire(&filesys_lock);
   for (struct list_elem *e = list_begin(&cur->fd_list); e != list_end(&cur->fd_list); e = list_next(e)) {
     struct fd_elem *fd_elem = list_entry(e, struct fd_elem, elem);

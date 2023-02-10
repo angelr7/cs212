@@ -533,7 +533,7 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
    user virtual memory. Adding arguements to the stack being 
    passed by the executing program*/
 static bool
-(void **esp, const char *cmdline)
+setup_stack(void **esp, const char *cmdline)
 {
   uint8_t *kpage;
   bool success = false;

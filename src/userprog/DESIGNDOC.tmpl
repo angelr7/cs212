@@ -194,10 +194,11 @@ struct fd_elem
 Freeing:
     In our program freeing is handled by whoever uses the struct last. 
     This implementation is done using using a boolean in the shared
-    child_process called tried_to_free. 
+    child_process called tried_to_free. This will works regardless of
+    if the parent waits for the child.
 
     If your are process C and are exiting you will check tried_to_free.
-    If true, it means that your parent has exited and you must free the 
+    If true, it means that your parent P has exited and you must free the 
     shared child_process. If tried_to_free is false it means that P 
     is alive and you will NOT free the child_process because P will 
     do it later.
@@ -226,13 +227,12 @@ Case 1: P alive, waiting on C to exit:
     INITIAL_STATUS will we stop sleeping. Here the wait_lock protects
     wait_cond from any race conditions. 
 
-
-
-Case 2: P alive, waiting on C to exit:
+Case 2: P alive, waiting on C, C already exitted:
 
     In the case where P is waiting for C and C has exited our program
     will return the childs exit status, which is kept updated through
-    the shared child_process. 
+    the shared child_process. Any changes to child_process are protected
+    by process_lock and can not have race conditions.  
 
 In both cases 1 and 2 P will be the last process to use child_process.
 Therefore as described above in our Freeing section the shared 
@@ -241,33 +241,27 @@ This makes it so that we have no race conditions for this struct
 because only the parent will have access to the child_process since
 the child will have exited when we eventually free. 
 
-Case 3: P Exit C Running:
-
-Case 3: P Exit C exiting:
-
+Case 3: P Exit, no waiting, C alive:
     In the case where P has exited and C is running. C will not need any
     information inside of P since all shared information will be kept
-    alive through the shared child_process. When C is exiting we check to 
-    see if the parent has exited. If so we will free ourselves and will not
-    signal the parent as in the previous case.
+    alive through the shared child_process. When C is exiting we will
+    see that since the parent has exited tried_to_free = true. Therefore
+    C will free the shared child_process and will not signal the parent 
+    since the parent has already exited.  
 
-    This is done using a condition variable wait_cond and lock wait_lock
-    which are shared only between C and P through child_process.
-    We put the parent to sleep with wait_cond in a while loop ensuring 
-    that only if the child status which we are waiting on is no longer 
-    INITIAL_STATUS will we stop sleeping. Here the wait_lock protects
-    wait_cond from any race conditions. 
+Case 4: P Exits after C exits, no waiting:
+    C exits, but parent exits, parent will not need any information from 
+    inside of the child thread and will also not wait for it. There will
+    be no race conditions because since P is the last process to exit
+    it will close child_process. As described in the Freeing section. 
 
-    In the case where P is waiting for C and C has exited our program
-    will return the childs exit status, which is kept updated through
-    the shared child_process. 
+Case 5: Special case, Both exit simultaneously:
+    We do not need to worry about this case because it is not possible.
+    Because of our use of locking through process lock one will always
+    finish first and we will arrive in one of the 4 cases above.
 
-    In both cases Since C will be the last process to use child_process 
-    the shared child_process struct will not be freed until C exits. 
-    This makes it so that we have no race conditions for this struct 
-    because only C will have access to the child_process since P will 
-    have exited.
-   
+Case 6: Child never exits, Parent never exits:
+    Will run out of memory and will be caught and return with -1
 
 ---- RATIONALE ----
 
@@ -279,6 +273,7 @@ Case 3: P Exit C exiting:
 
 >> B11: The default tid_t to pid_t mapping is the identity mapping.
 >> If you changed it, what advantages are there to your approach?
+    We did not change the identity mapping in our approach.
 
                SURVEY QUESTIONS
                ================
@@ -298,6 +293,10 @@ the quarter.
 >> Is there some particular fact or hint we should give students in
 >> future quarters to help them solve the problems?  Conversely, did you
 >> find any of our guidance to be misleading?
+
+It would be helpful if the questions were laid out more clearly 
+in the design doc when thinking about synchornization between different
+cases. 
 
 >> Do you have any suggestions for the TAs to more effectively assist
 >> students, either for future quarters or the remaining projects?

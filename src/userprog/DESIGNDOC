@@ -115,7 +115,10 @@ Fabian Luna <luna1206@stanford.edu>
 
     In general, this brings another advantage as well. By removing the need to
     parse and validate these commands in the kernel, the UNIX approach is much 
-    more efficent and uses less memory for the kernel.
+    more efficent and uses less memory for the kernel. Alongside this the 
+    complexity of doing this kernel side and having to pass
+    alongside arguements is more difficult than if it were all taken care of
+    before being switched to the kernel.
 
 
                  SYSTEM CALLS
@@ -155,7 +158,9 @@ of the name of its executable file and pointer to its opened
 executable file for the purpose of printing the name and closing
 the executable when the process exits. The cur_fd and fd_list members
 allow us to keep track of fd assignment and the process's current open
-files. The
+files.  We use the children to free at the end and communicate with the
+child. We use *process to be able to free the child_process if needed
+when exiting */
 struct thread
 {
    char exec_name[128];        /* Name used to print */
@@ -389,10 +394,11 @@ struct fd_elem
 Freeing:
     In our program freeing is handled by whoever uses the struct last. 
     This implementation is done using using a boolean in the shared
-    child_process called tried_to_free. 
+    child_process called tried_to_free. This will works regardless of
+    if the parent waits for the child.
 
     If your are process C and are exiting you will check tried_to_free.
-    If true, it means that your parent has exited and you must free the 
+    If true, it means that your parent P has exited and you must free the 
     shared child_process. If tried_to_free is false it means that P 
     is alive and you will NOT free the child_process because P will 
     do it later.
@@ -403,12 +409,6 @@ Freeing:
     is alive and you will NOT free the child_process because C will 
     do it later.
 
-    The special case where both a child and parent exit simultaneously is
-    not possible. Our lock process_lock makes sure that both can not happen
-    at once. The other case where a program runs infinitely will most likely
-    be met with our program running out of memory considering our small file
-    system and will be forced to exit the programs at some point. 
-
     Lastly, all processes close their open files in our exit handler. After 
     freeing all necessary children, each process loops through its list of 
     open files, and closes each file. In this loop, we also make sure to 
@@ -417,7 +417,6 @@ Freeing:
     we use file_close to close our file descriptors. This ensures that we 
     do not fully close a file until all processes who are accessing it have
     terminated.
-
 
 Case 1: P alive, waiting on C to exit:
     In the case where P is waiting for C and C has not exited
@@ -430,13 +429,12 @@ Case 1: P alive, waiting on C to exit:
     INITIAL_STATUS will we stop sleeping. Here the wait_lock protects
     wait_cond from any race conditions. 
 
-
-
-Case 2: P alive, waiting on C to exit:
+Case 2: P alive, waiting on C, C already exitted:
 
     In the case where P is waiting for C and C has exited our program
     will return the childs exit status, which is kept updated through
-    the shared child_process. 
+    the shared child_process. Any changes to child_process are protected
+    by process_lock and can not have race conditions.  
 
 In both cases 1 and 2 P will be the last process to use child_process.
 Therefore as described above in our Freeing section the shared 
@@ -445,31 +443,33 @@ This makes it so that we have no race conditions for this struct
 because only the parent will have access to the child_process since
 the child will have exited when we eventually free. 
 
-Case 3: P Exit C exiting:
-
+Case 3: P Exit, no waiting, C alive:
     In the case where P has exited and C is running. C will not need any
     information inside of P since all shared information will be kept
-    alive through the shared child_process. When C is exiting we check to 
-    see if the parent has exited. If so we will free ourselves and will not
-    signal the parent as in the previous case.
+    alive through the shared child_process. When C is exiting we will
+    see that since the parent has exited tried_to_free = true. Therefore
+    C will free the shared child_process and will not signal the parent 
+    since the parent has already exited.  
 
-    This is done using a condition variable wait_cond and lock wait_lock
-    which are shared only between C and P through child_process.
-    We put the parent to sleep with wait_cond in a while loop ensuring 
-    that only if the child status which we are waiting on is no longer 
-    INITIAL_STATUS will we stop sleeping. Here the wait_lock protects
-    wait_cond from any race conditions. 
+Case 4: P Exits after C exits, no waiting:
+    C exits, but parent exits, parent will not need any information from 
+    inside of the child thread and will also not wait for it. There will
+    be no race conditions because since P is the last process to exit
+    it will close child_process. As described in the Freeing section. 
 
-    In the case where P is waiting for C and C has exited our program
-    will return the childs exit status, which is kept updated through
-    the shared child_process. 
+Case 5: Special case, Both exit simultaneously:
+    The special case where both a child and parent exit simultaneously is
+    not possible. We do not need to worry about this case because it is not 
+    possible. Because of our use of locking through process lock one will 
+    always finish first and we will arrive in one of the 4 cases above. 
 
-    In both cases Since C will be the last process to use child_process 
-    the shared child_process struct will not be freed until C exits. 
-    This makes it so that we have no race conditions for this struct 
-    because only C will have access to the child_process since P will 
-    have exited.
-   
+Case 6: Special Case Parent or child or both running infinitely:
+    Depending on what the program is doing we will either run out of memory
+    and catch the error exiting with -1. Or in the case that the process 
+    running infinitely does not reallocate or use more memory we will hang. 
+    This will allow the user to send a halt or interrupt for their program 
+    to stop the hang. This s a valid output because most terminals, shells, 
+    etc force the user to end infinite programs themselves. 
 
 ---- RATIONALE ----
 
@@ -510,6 +510,7 @@ Case 3: P Exit C exiting:
 
 >> B11: The default tid_t to pid_t mapping is the identity mapping.
 >> If you changed it, what advantages are there to your approach?
+    We did not use an alternate mapping system in our implementation.
 
                SURVEY QUESTIONS
                ================

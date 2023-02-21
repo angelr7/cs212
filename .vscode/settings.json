@@ -3,6 +3,7 @@
         "interrupt.h": "c",
         "filesys.h": "c",
         "list.h": "c",
-        "file.h": "c"
+        "file.h": "c",
+        "pagedir.h": "c"
     }
 }

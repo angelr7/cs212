@@ -39,8 +39,7 @@ tid_t process_execute(const char *file_name)
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
-  // fn_copy = palloc_get_page(0);
-  fn_copy = get_frame(0);
+  fn_copy = palloc_get_page(0);
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy(fn_copy, file_name, PGSIZE);
@@ -73,8 +72,7 @@ tid_t process_execute(const char *file_name)
     return -1;
   if (tid == TID_ERROR)
   {
-    free_frame(fn_copy);
-    // palloc_free_page(fn_copy);
+    palloc_free_page(fn_copy);
   }
   return tid;
 }
@@ -100,8 +98,7 @@ start_process(void *file_name_)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load(file_name, &if_.eip, &if_.esp);
   /* If load failed, quit. */
-  // palloc_free_page(file_name);
-  free_frame(file_name);
+  palloc_free_page(file_name);
 
 
   /* If thread failed to load set child_error in child_process 
@@ -547,7 +544,6 @@ setup_stack(void **esp, const char *cmdline)
   uint8_t *kpage;
   bool success = false;
 
-  // kpage = palloc_get_page(PAL_USER | PAL_ZERO);
   kpage = get_frame(PAL_USER | PAL_ZERO);
   if (kpage != NULL)
   {

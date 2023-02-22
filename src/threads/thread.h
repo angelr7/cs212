@@ -108,18 +108,20 @@ struct child_process
 struct thread
 {
    /* Owned by thread.c. */
-   tid_t tid;                 /* Thread identifier. */
-   enum thread_status status; /* Thread state. */
-   char name[16];             /* Name (for debugging purposes). */
+   tid_t tid;                  /* Thread identifier. */
+   enum thread_status status;  /* Thread state. */
+   char name[16];              /* Name (for debugging purposes). */
    char exec_name[128];        /* Name used to print */
-   struct file *exec_file;    /* File being executed*/
-   uint8_t *stack;           /* Saved stack pointer. */
-   int priority;             /* Priority. */
-   struct list_elem allelem; /* List element for all threads list. */
-   int cur_fd;               /* Thread current fd number to assign */
-   struct list fd_list;      /* Thread open file descriptors list */
+   struct file *exec_file;     /* File being executed*/
+   uint8_t *stack;             /* Saved stack pointer. */
+   int priority;               /* Priority. */
+   struct list_elem allelem;   /* List element for all threads list. */
+   int cur_fd;                 /* Thread current fd number to assign */
+   struct list fd_list;        /* Thread open file descriptors list */
    /* Shared between thread.c and synch.c. */
-   struct list_elem elem; /* List element. */
+   struct list_elem elem;      /* List element. */
+   /* VM */
+   struct hash spt;            /* Supplemental page table. */
 
 #ifdef USERPROG
    /* Owned by userprog/process.c. */

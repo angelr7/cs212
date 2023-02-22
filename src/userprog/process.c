@@ -332,6 +332,8 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
 
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create();
+  init_supplemental_table(&t->spt);
+
   if (t->pagedir == NULL)
     goto done;
   process_activate();

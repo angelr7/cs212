@@ -24,13 +24,13 @@ void frame_table_init(void)
     int i = 0;
     while ((kernel_addr = palloc_get_page(PAL_USER)) != NULL)
     {
-        printf("%d\n", i);
+        // printf("%d\n", i);
         struct frame_entry *entry = malloc(sizeof(struct frame_entry));
         entry->physical_address = kernel_addr;
         entry->process_thread = NULL;
         frame_table[i++] = entry;
     }
-    printf("frames allocated\n");
+    // printf("frames allocated\n");
 }
 
 void frame_table_set_size(size_t size)
@@ -62,7 +62,7 @@ void free_frame(void* page)
 {
     for (size_t i = 0; i < frame_table_size; i++)
     {
-        printf("i: %d, frametablesize: %d\n", i, frame_table_size);
+        // printf("i: %d, frametablesize: %d\n", i, frame_table_size);
         if (frame_table[i]->physical_address == page)
         {
             ASSERT(bitmap_all (used_map, i, 1));

@@ -4,12 +4,12 @@
 #include "userprog/syscall.h"
 #include "userprog/pagedir.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <syscall-nr.h>
 #include "devices/shutdown.h"
 #include "userprog/process.h"
 #include "threads/interrupt.h"
+#include "threads/malloc.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"

@@ -16,6 +16,7 @@
 #include "threads/flags.h"
 #include "threads/init.h"
 #include "threads/interrupt.h"
+#include "threads/malloc.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
@@ -429,7 +430,7 @@ done:
 
 /* load() helpers. */
 
-static bool install_page(void *upage, void *kpage, bool writable);
+bool install_page(void *upage, void *kpage, bool writable);
 
 /* Checks whether PHDR describes a valid, loadable segment in
    FILE and returns true if so, false otherwise. */
@@ -508,9 +509,6 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
     size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
     size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-    /* Get a page of memory. */
-    // uint8_t *kpage = palloc_get_page(PAL_USER);
-
     // void *virtual_addr;
     // void *physical_addr;
     // struct thread *process_reference;
@@ -523,38 +521,44 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
     page->loaded = !read_first_page;
     page->memory_flag = IN_DISK;
     page->file = file;
-
-    uint8_t *kpage = get_frame(PAL_USER);
-    if (kpage == NULL)
-      return false;
-
-// Add all this to page fault handler somehow, and
-    /* Load this page. */
-    if (!read_first_page && file_read(file, kpage, page_read_bytes) != (int)page_read_bytes)
-    {
-      // palloc_free_page(kpage);
-      free_frame(kpage);
-      return false;
-    }
+    page->file_ofs = ofs;
+    page->page_read_bytes = page_read_bytes;
+    page->page_zero_bytes = page_zero_bytes;
+    page->writable = writable;
 
     if (!read_first_page)
+    {
+      /* Get a page of memory. */
+      uint8_t *kpage = get_frame(PAL_USER);
+      if (kpage == NULL)
+        return false;
+      
+      /* Load this page. */
+      if (file_read(file, kpage, page_read_bytes) != (int)page_read_bytes)
+      {
+        free_frame(kpage);
+        return false;
+      }
       memset(kpage + page_read_bytes, 0, page_zero_bytes);
 
-    /* Add the page to the process's address space. */
-    if (!read_first_page && !install_page(upage, kpage, writable))
-    {
-      // palloc_free_page(kpage);
-      free_frame(kpage);
-      return false;
+      /* Add the page to the process's address space. */
+      if (!install_page(upage, kpage, writable))
+      {
+        free_frame(kpage);
+        return false;
+      }
+
+      read_first_page = true;
     }
 
-    page->writeable = writable;
     hash_insert(&thread_current()->spt, &page->hash_elem);
+    // printf("inserted upage %p in hash for thread %s\n", upage, thread_current()->name);
 
     /* Advance. */
     read_bytes -= page_read_bytes;
     zero_bytes -= page_zero_bytes;
     upage += PGSIZE;
+    ofs += page_read_bytes;
   }
   return true;
 }
@@ -675,7 +679,7 @@ setup_stack(void **esp, const char *cmdline)
    virtual address KPAGE to the page table.
    If WRITABLE is true, the user process may modify the page;
    otherwise, it is read-only. */
-static bool
+bool
 install_page(void *upage, void *kpage, bool writable)
 {
   struct thread *t = thread_current();

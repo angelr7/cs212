@@ -122,6 +122,7 @@ struct thread
    struct list_elem elem;      /* List element. */
    /* VM */
    struct hash spt;            /* Supplemental page table. */
+   void *esp;                  /* esp pointer. */
 
 #ifdef USERPROG
    /* Owned by userprog/process.c. */

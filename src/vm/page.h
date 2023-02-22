@@ -1,7 +1,7 @@
 #ifndef VM_PAGE_H
 #define VM_PAGE_H
 #include <hash.h>
-#include "filesys/file.c"
+#include "filesys/off_t.h"
 #include "threads/thread.h"
 
 /* These are the different states a file in our page table can be in */
@@ -19,12 +19,17 @@ struct page {
     bool loaded;
     short memory_flag;    
     struct file *file;
-    bool writeable;
+    off_t file_ofs;
+    size_t page_read_bytes;
+    size_t page_zero_bytes;
+    bool writable;
 };
 
 void init_supplemental_table(struct hash*);
 unsigned page_hash(const struct hash_elem *p_, void *aux UNUSED);
 bool page_less(const struct hash_elem *a_, const struct hash_elem *b_,
                void *aux UNUSED);
+
+bool load_page(void *fault_addr);
 
 #endif  /* vm/page.h */

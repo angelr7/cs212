@@ -1,6 +1,7 @@
 #ifndef VM_PAGE_H
 #define VM_PAGE_H
 #include <hash.h>
+#include "filesys/file.c"
 #include "threads/thread.h"
 
 /* These are the different states a file in our page table can be in */
@@ -14,9 +15,11 @@ struct page {
     void *virtual_addr;
     void *physical_addr;
     struct hash_elem hash_elem;
-    struct thread *process_refrence;
+    struct thread *process_reference;
     bool loaded;
     short memory_flag;    
+    struct file *file;
+    bool writeable;
 };
 
 void init_supplemental_table(struct hash*);

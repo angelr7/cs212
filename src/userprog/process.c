@@ -21,6 +21,7 @@
 #include "threads/vaddr.h"
 #include "threads/synch.h"
 #include "vm/frame.h"
+#include "vm/page.h"
 
 
 #define CMDLINE_CHAR_LIMIT 128
@@ -501,6 +502,7 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
   ASSERT(ofs % PGSIZE == 0);
 
   file_seek(file, ofs);
+  bool read_first_page = false;
   while (read_bytes > 0 || zero_bytes > 0)
   {
     /* Calculate how to fill this page.
@@ -511,27 +513,46 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
 
     /* Get a page of memory. */
     // uint8_t *kpage = palloc_get_page(PAL_USER);
+
+    // void *virtual_addr;
+    // void *physical_addr;
+    // struct thread *process_reference;
+    // bool loaded;
+    // short memory_flag;  
+    // struct hash_elem hash_elem;
+    struct page *page = malloc(sizeof (struct page));
+    page->virtual_addr = (void *)upage;
+    page->process_reference = thread_current();
+    page->loaded = !read_first_page;
+    page->memory_flag = IN_DISK;
+    page->file = file;
+
     uint8_t *kpage = get_frame(PAL_USER);
     if (kpage == NULL)
       return false;
 
 // Add all this to page fault handler somehow, and
     /* Load this page. */
-    if (file_read(file, kpage, page_read_bytes) != (int)page_read_bytes)
+    if (!read_first_page && file_read(file, kpage, page_read_bytes) != (int)page_read_bytes)
     {
       // palloc_free_page(kpage);
       free_frame(kpage);
       return false;
     }
-    memset(kpage + page_read_bytes, 0, page_zero_bytes);
+
+    if (!read_first_page)
+      memset(kpage + page_read_bytes, 0, page_zero_bytes);
 
     /* Add the page to the process's address space. */
-    if (!install_page(upage, kpage, writable))
+    if (!read_first_page && !install_page(upage, kpage, writable))
     {
       // palloc_free_page(kpage);
       free_frame(kpage);
       return false;
     }
+
+    page->writeable = writable;
+    hash_insert(&thread_current()->spt, &page->hash_elem);
 
     /* Advance. */
     read_bytes -= page_read_bytes;

@@ -513,6 +513,7 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
     if (kpage == NULL)
       return false;
 
+// Add all this to page fault handler somehow, and
     /* Load this page. */
     if (file_read(file, kpage, page_read_bytes) != (int)page_read_bytes)
     {

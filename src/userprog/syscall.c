@@ -13,6 +13,7 @@
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "vm/page.h"
 
 typedef int pid_t;
 
@@ -147,7 +148,18 @@ verify_pointer(const void *pointer, int size)
   if (is_user_vaddr(pointer))
   {
     uint32_t *pd = thread_current()->pagedir;
-    if (pagedir_get_page(pd, pointer) == NULL || pagedir_get_page(pd, last_byte) == NULL)
+    struct page p1;
+    p1.virtual_addr = pg_round_down(pointer);
+    struct page p2;
+    p2.virtual_addr = pg_round_down(last_byte);
+    bool pd1 = pagedir_get_page(pd, pointer) == NULL;
+    bool spt1 = hash_find(&thread_current()->spt, &p1.hash_elem) == NULL;
+    bool pd2 = pagedir_get_page(pd, last_byte) == NULL;
+    bool spt2 = hash_find(&thread_current()->spt, &p2.hash_elem) == NULL;
+    // if ((pagedir_get_page(pd, pointer) == NULL && hash_find(&thread_current()->spt, &p1.hash_elem) == NULL) ||
+    //  (pagedir_get_page(pd, last_byte) == NULL && hash_find(&thread_current()->spt, &p2.hash_elem) == NULL))
+    // {
+    if ((pd1 && spt1) || (pd2 && spt2))
     {
       exit_handler(-1);
     }

@@ -549,6 +549,7 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
       }
 
       read_first_page = true;
+      // printf("loaded upage %p in for thread %s\n", upage, thread_current()->name);
     }
 
     hash_insert(&thread_current()->spt, &page->hash_elem);

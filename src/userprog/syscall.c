@@ -135,7 +135,7 @@ list_find_fd_elem(struct thread *t, int fd)
   return NULL;
 }
 
-/*Verify that every byte of data that a pointer points to is valid */
+/* Verify that every byte of data that a pointer points to is valid */
 static void
 verify_pointer(const void *pointer, int size)
 {

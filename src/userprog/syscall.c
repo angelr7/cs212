@@ -34,13 +34,21 @@ static void seek(int fd, unsigned position);
 static void tell(int fd, struct intr_frame *f);
 static void close(int fd);
 
-static mapid_t mmap(int fd, void *addr, struct intr_frame *f) 
-{ 
-  // we need to make sure that addr begins on the start of a page, and that it 
+static void mmap(int fd, void *addr, struct intr_frame *f)
+{
+  // we need to make sure that addr begins on the start of a page, and that it
   // also doesn't equal 0x0. we also need to make sure that they dont use 0 or 1
   // as a file descriptor.
-  if (pg_round_down(addr) != addr || addr == 0x0) return -1;
-  if (fd == 0 || fd == 1 || fd < 0) return -1;
+  if (pg_round_down(addr) != addr || addr == 0x0)
+  {
+    f->eax = -1;
+    return;
+  };
+  if (fd == 0 || fd == 1 || fd < 0)
+  {
+    f->eax = -1;
+    return;
+  }
 
   // find the list_elem that corresponds to fd
   struct list_elem *fd_list_elem = list_find_fd_elem(thread_current(), fd);
@@ -57,27 +65,28 @@ static mapid_t mmap(int fd, void *addr, struct intr_frame *f)
   int size = file_length(found_fd_elem->file);
   lock_release(&filesys_lock);
 
-  // we know that we start on a valid page boundary, so we need to make sure that 
+  // we know that we start on a valid page boundary, so we need to make sure that
   // the following pages don't overlap with virtual pages that are already used
   uint32_t currPtr = (char *)addr + size;
-  while (currPtr % PGSIZE != 0) 
+  while (currPtr % PGSIZE != 0)
     currPtr++;
 
-  // determine if we've allocated any of the necessary pages for addr in the spt. 
+  // determine if we've allocated any of the necessary pages for addr in the spt.
   // if that's the case, we have overlap, and this pointer isn't valid
   int totPages = (currPtr - (uint32_t)addr) / PGSIZE;
-  for (int pageNum = 0; pageNum < totPages; pageNum++) {
+  for (int pageNum = 0; pageNum < totPages; pageNum++)
+  {
     uint32_t currPage = (uint32_t)addr + pageNum * PG_SIZE;
     struct page p;
     p.virtual_addr = (void *)currPage;
 
     struct hash_elem *found_item = hash_find(&thread_current()->spt, &p.hash_elem);
-    if (found_item != NULL) {
-      return -1
+    if (found_item != NULL)
+    {
+      f->eax = -1;
+      return;
     }
   }
-
-
 }
 
 struct fd_elem
@@ -161,7 +170,7 @@ syscall_handler(struct intr_frame *f)
     close((int)arg1);
     break;
   case SYS_MMAP:
-    mmap((int) arg1, (void *) arg2, f);
+    mmap((int)arg1, (void *)arg2, f);
     break;
   case SYS_MUNMAP:
     break;
@@ -174,9 +183,9 @@ list_find_fd_elem(struct thread *t, int fd)
 {
   struct list_elem *e;
 
-  for (e = list_begin(&t->fd_list); 
-    e != list_end(&t->fd_list);
-    e = list_next(e))
+  for (e = list_begin(&t->fd_list);
+       e != list_end(&t->fd_list);
+       e = list_next(e))
   {
     struct fd_elem *f = list_entry(e, struct fd_elem, elem);
     if (f->fd == fd)
@@ -235,7 +244,7 @@ halt(void)
   shutdown_power_off();
 }
 
-/*Exit process and free fds and child_processes. If 
+/*Exit process and free fds and child_processes. If
 this process is the last one using child_process free it*/
 void exit_handler(int status)
 {
@@ -245,39 +254,41 @@ void exit_handler(int status)
   struct child_process *process_info = cur->process;
   process_info->status = status;
 
-  /*loop through children if child exited free 
+  /*loop through children if child exited free
   its corresponding child_process*/
-  for (struct list_elem *e = list_begin(&cur->children); 
-    e != list_end(&cur->children); 
-    e = list_next(e)) 
+  for (struct list_elem *e = list_begin(&cur->children);
+       e != list_end(&cur->children);
+       e = list_next(e))
   {
     struct child_process *child = list_entry(e, struct child_process, wait_elem);
-    if (child->tried_to_free) 
+    if (child->tried_to_free)
       free(child);
-    else child->tried_to_free = true;
+    else
+      child->tried_to_free = true;
   }
   /*loop through fd_list and free fds*/
   lock_acquire(&filesys_lock);
   struct fd_elem *prev = NULL;
-  for (struct list_elem *e = list_begin(&cur->fd_list); 
-    e != list_end(&cur->fd_list); 
-    e = list_next(e)) 
+  for (struct list_elem *e = list_begin(&cur->fd_list);
+       e != list_end(&cur->fd_list);
+       e = list_next(e))
   {
-    if (prev) free(prev);
+    if (prev)
+      free(prev);
     struct fd_elem *fd_elem = list_entry(e, struct fd_elem, elem);
     file_close(fd_elem->file);
     prev = fd_elem;
   }
-  if (prev) free(prev);
-  lock_release(&filesys_lock);  
-
+  if (prev)
+    free(prev);
+  lock_release(&filesys_lock);
 
   /*if parent has exited then free yourself*/
-  if (process_info->tried_to_free) 
+  if (process_info->tried_to_free)
     free(process_info);
-  
+
   /*if parent has not exited then wake up parent in process_wait*/
-  else 
+  else
   {
     lock_acquire(&process_info->wait_lock);
     cond_signal(&process_info->wait_cond, &process_info->wait_lock);
@@ -341,7 +352,8 @@ open(const char *file, struct intr_frame *f)
   }
   struct thread *t = thread_current();
   int fd = t->cur_fd;
-  struct fd_elem *opened_fd = malloc (sizeof (struct fd_elem));;
+  struct fd_elem *opened_fd = malloc(sizeof(struct fd_elem));
+  ;
   opened_fd->fd = fd;
   opened_fd->file = opened_file;
   list_push_back(&t->fd_list, &opened_fd->elem);

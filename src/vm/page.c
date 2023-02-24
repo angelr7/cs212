@@ -1,12 +1,13 @@
-#include "frame.h"
 #include <hash.h>
 #include <string.h>
+#include <stdlib.h>
+#include "frame.h"
+#include "vm/page.h"
 #include "filesys/file.h"
-#include "threads/palloc.h"
 #include "threads/vaddr.h"
+#include "threads/palloc.h"
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
-#include "vm/page.h"
 
 /* Returns a hash value for page p. */
 unsigned
@@ -50,17 +51,16 @@ bool load_page(void *fault_addr)
                 free_frame(kpage);
                 return false;
             }
+
+            struct page *page = malloc(sizeof (struct page));
+            page->virtual_addr = (void *)upage;
+            page->process_reference = thread_current();
+            page->loaded = true;
+            page->memory_flag = IN_MEM;
+            page->writable = true; // all stack memory should be writable?
+            hash_insert(&thread_current()->spt, &page->hash_elem);
+
             return true;
-            // struct page *page = malloc(sizeof (struct page));
-            // page->virtual_addr = (void *)upage;
-            // page->process_reference = thread_current();
-            // page->loaded = !read_first_page;
-            // page->memory_flag = IN_DISK;
-            // page->file = file;
-            // page->file_ofs = ofs;
-            // page->page_read_bytes = page_read_bytes;
-            // page->page_zero_bytes = page_zero_bytes;
-            // page->writable = writable;
         }
         return false;
     }

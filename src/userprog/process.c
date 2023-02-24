@@ -509,12 +509,6 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
     size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
     size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-    // void *virtual_addr;
-    // void *physical_addr;
-    // struct thread *process_reference;
-    // bool loaded;
-    // short memory_flag;  
-    // struct hash_elem hash_elem;
     struct page *page = malloc(sizeof (struct page));
     page->virtual_addr = (void *)upage;
     page->process_reference = thread_current();
@@ -668,6 +662,15 @@ setup_stack(void **esp, const char *cmdline)
 
       /* Set esp to final location */
       *esp = esp_return_start;
+
+      // add first stack frame into the spt
+      struct page *page = malloc(sizeof (struct page));
+      page->virtual_addr = pg_round_down(esp);
+      page->process_reference = thread_current();
+      page->loaded = true;
+      page->memory_flag = IN_MEM;
+      page->writable = true;
+      hash_insert(&thread_current()->spt, &page->hash_elem);
     }
     else
       // palloc_free_page(kpage);

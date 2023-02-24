@@ -1,0 +1,11 @@
+{
+    "files.associations": {
+        "syscall.h": "c",
+        "filesys.h": "c",
+        "*.inc": "c",
+        "atomic": "c",
+        "*.tcc": "c",
+        "fstream": "c",
+        "sstream": "c"
+    }
+}

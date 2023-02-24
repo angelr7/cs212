@@ -8,6 +8,7 @@
 #define IN_DISK 0
 #define IN_SWAP 1
 #define ALL_ZEROES 2
+#define IN_MEM 3
 
 // struct hash supplemental_table;
 

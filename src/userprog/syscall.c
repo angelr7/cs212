@@ -16,7 +16,7 @@
 #include "vm/page.h"
 
 typedef int pid_t;
-
+typedef int mapid_t;
 
 static void syscall_handler(struct intr_frame *);
 static void verify_pointer(const void *pointer, int size);
@@ -34,6 +34,51 @@ static void seek(int fd, unsigned position);
 static void tell(int fd, struct intr_frame *f);
 static void close(int fd);
 
+static mapid_t mmap(int fd, void *addr, struct intr_frame *f) 
+{ 
+  // we need to make sure that addr begins on the start of a page, and that it 
+  // also doesn't equal 0x0. we also need to make sure that they dont use 0 or 1
+  // as a file descriptor.
+  if (pg_round_down(addr) != addr || addr == 0x0) return -1;
+  if (fd == 0 || fd == 1 || fd < 0) return -1;
+
+  // find the list_elem that corresponds to fd
+  struct list_elem *fd_list_elem = list_find_fd_elem(thread_current(), fd);
+  if (fd_list_elem == NULL)
+  {
+    f->eax = -1;
+    return;
+  }
+
+  // get the fd_elem that corresponds to the list_elem, which has the file struct
+  // that we need to get the length of the file
+  struct fd_elem *found_fd_elem = list_entry(fd_list_elem, struct fd_elem, elem);
+  lock_acquire(&filesys_lock);
+  int size = file_length(found_fd_elem->file);
+  lock_release(&filesys_lock);
+
+  // we know that we start on a valid page boundary, so we need to make sure that 
+  // the following pages don't overlap with virtual pages that are already used
+  uint32_t currPtr = (char *)addr + size;
+  while (currPtr % PGSIZE != 0) 
+    currPtr++;
+
+  // determine if we've allocated any of the necessary pages for addr in the spt. 
+  // if that's the case, we have overlap, and this pointer isn't valid
+  int totPages = (currPtr - (uint32_t)addr) / PGSIZE;
+  for (int pageNum = 0; pageNum < totPages; pageNum++) {
+    uint32_t currPage = (uint32_t)addr + pageNum * PG_SIZE;
+    struct page p;
+    p.virtual_addr = (void *)currPage;
+
+    struct hash_elem *found_item = hash_find(&thread_current()->spt, &p.hash_elem);
+    if (found_item != NULL) {
+      return -1
+    }
+  }
+
+
+}
 
 struct fd_elem
 {
@@ -114,6 +159,11 @@ syscall_handler(struct intr_frame *f)
     break;
   case SYS_CLOSE:
     close((int)arg1);
+    break;
+  case SYS_MMAP:
+    mmap((int) arg1, (void *) arg2, f);
+    break;
+  case SYS_MUNMAP:
     break;
   }
 }

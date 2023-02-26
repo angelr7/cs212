@@ -33,61 +33,7 @@ static void write(int fd, const void *buffer, unsigned int length, struct intr_f
 static void seek(int fd, unsigned position);
 static void tell(int fd, struct intr_frame *f);
 static void close(int fd);
-
-static void mmap(int fd, void *addr, struct intr_frame *f)
-{
-  // we need to make sure that addr begins on the start of a page, and that it
-  // also doesn't equal 0x0. we also need to make sure that they dont use 0 or 1
-  // as a file descriptor.
-  if (pg_round_down(addr) != addr || addr == 0x0)
-  {
-    f->eax = -1;
-    return;
-  };
-  if (fd == 0 || fd == 1 || fd < 0)
-  {
-    f->eax = -1;
-    return;
-  }
-
-  // find the list_elem that corresponds to fd
-  struct list_elem *fd_list_elem = list_find_fd_elem(thread_current(), fd);
-  if (fd_list_elem == NULL)
-  {
-    f->eax = -1;
-    return;
-  }
-
-  // get the fd_elem that corresponds to the list_elem, which has the file struct
-  // that we need to get the length of the file
-  struct fd_elem *found_fd_elem = list_entry(fd_list_elem, struct fd_elem, elem);
-  lock_acquire(&filesys_lock);
-  int size = file_length(found_fd_elem->file);
-  lock_release(&filesys_lock);
-
-  // we know that we start on a valid page boundary, so we need to make sure that
-  // the following pages don't overlap with virtual pages that are already used
-  uint32_t currPtr = (char *)addr + size;
-  while (currPtr % PGSIZE != 0)
-    currPtr++;
-
-  // determine if we've allocated any of the necessary pages for addr in the spt.
-  // if that's the case, we have overlap, and this pointer isn't valid
-  int totPages = (currPtr - (uint32_t)addr) / PGSIZE;
-  for (int pageNum = 0; pageNum < totPages; pageNum++)
-  {
-    uint32_t currPage = (uint32_t)addr + pageNum * PG_SIZE;
-    struct page p;
-    p.virtual_addr = (void *)currPage;
-
-    struct hash_elem *found_item = hash_find(&thread_current()->spt, &p.hash_elem);
-    if (found_item != NULL)
-    {
-      f->eax = -1;
-      return;
-    }
-  }
-}
+static void mmap(int fd, void *addr, struct intr_frame *f);
 
 struct fd_elem
 {
@@ -116,7 +62,7 @@ syscall_handler(struct intr_frame *f)
     verify_pointer(f->esp + 4, sizeof(uint32_t));
     arg1 = *(uint32_t *)(f->esp + 4);
   }
-  if (syscall_num == SYS_CREATE || syscall_num == SYS_READ || syscall_num == SYS_WRITE || syscall_num == SYS_SEEK)
+  if (syscall_num == SYS_CREATE || syscall_num == SYS_READ || syscall_num == SYS_WRITE || syscall_num == SYS_SEEK || syscall_num == SYS_MMAP)
   {
     verify_pointer(f->esp + 8, sizeof(uint32_t));
     arg2 = *(uint32_t *)(f->esp + 8);
@@ -476,4 +422,84 @@ close(int fd)
   lock_release(&filesys_lock);
   list_remove(fd_list_elem);
   free(found_fd_elem);
+}
+
+static void
+mmap(int fd, void *addr, struct intr_frame *f)
+{
+  // we need to make sure that addr begins on the start of a page, and that it
+  // also doesn't equal 0x0. we also need to make sure that they dont use 0 or 1
+  // as a file descriptor.
+  if (pg_round_down(addr) != addr || addr == 0x0)
+  {
+    f->eax = -1;
+    return;
+  };
+  if (fd == 0 || fd == 1 || fd < 0)
+  {
+    f->eax = -1;
+    return;
+  }
+
+  // find the list_elem that corresponds to fd
+  struct list_elem *fd_list_elem = list_find_fd_elem(thread_current(), fd);
+  if (fd_list_elem == NULL)
+  {
+    f->eax = -1;
+    return;
+  }
+
+  // get the fd_elem that corresponds to the list_elem, which has the file struct
+  // that we need to get the length of the file
+  struct fd_elem *found_fd_elem = list_entry(fd_list_elem, struct fd_elem, elem);
+  lock_acquire(&filesys_lock);
+  int size = file_length(found_fd_elem->file);
+  lock_release(&filesys_lock);
+
+  // we know that we start on a valid page boundary, so we need to make sure that
+  // the following pages don't overlap with virtual pages that are already used
+  uint32_t currPtr = (char *)addr + size;
+  while (currPtr % PGSIZE != 0)
+    currPtr++;
+
+  // determine if we've allocated any of the necessary pages for addr in the spt.
+  // if that's the case, we have overlap, and this pointer isn't valid
+  int totPages = (currPtr - (uint32_t)addr) / PGSIZE;
+  for (int pageNum = 0; pageNum < totPages; pageNum++)
+  {
+    uint32_t currPage = (uint32_t)addr + pageNum * PGSIZE;
+    struct page p;
+    p.virtual_addr = (void *)currPage;
+
+    struct hash_elem *found_item = hash_find(&thread_current()->spt, &p.hash_elem);
+    if (found_item != NULL)
+    {
+      f->eax = -1;
+      return;
+    }
+  }
+
+  // create entries in the spt for each page of the file we're mapping
+  off_t file_ofs = 0;
+  while (size > 0)
+  {
+    size_t page_read_bytes = size < PGSIZE ? size : PGSIZE;
+    size_t page_zero_bytes = PGSIZE - page_read_bytes;
+
+    struct page *page = malloc(sizeof (struct page));
+    page->virtual_addr = addr;
+    page->process_reference = thread_current();
+    page->loaded = false;
+    page->memory_flag = IN_DISK;
+    page->file = found_fd_elem->file;
+    page->file_ofs = file_ofs;
+    page->page_read_bytes = page_read_bytes;
+    page->page_zero_bytes = page_zero_bytes;
+    page->writable = true; // not sure how to get this???
+
+    hash_insert(&thread_current()->spt, &page->hash_elem);
+    size -= PGSIZE;
+    file_ofs += PGSIZE;
+    addr += PGSIZE;
+  }
 }

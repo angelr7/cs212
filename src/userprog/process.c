@@ -500,6 +500,7 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
   ASSERT(ofs % PGSIZE == 0);
 
   file_seek(file, ofs);
+  bool all_zero = (read_bytes == 0);
   bool read_first_page = false;
   while (read_bytes > 0 || zero_bytes > 0)
   {
@@ -509,44 +510,18 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
     size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
     size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-    struct page *page = malloc(sizeof (struct page));
-    page->virtual_addr = (void *)upage;
-    page->process_reference = thread_current();
-    page->loaded = !read_first_page;
-    page->memory_flag = IN_DISK;
-    page->file = file;
-    page->file_ofs = ofs;
-    page->page_read_bytes = page_read_bytes;
-    page->page_zero_bytes = page_zero_bytes;
-    page->writable = writable;
+    if (all_zero)
+      page_create_zero_entry(upage, NULL, writable, !read_first_page);
+    else
+      page_create_file_entry(upage, NULL, file, ofs, page_read_bytes, page_zero_bytes, writable, NO_MAPID);
 
     if (!read_first_page)
     {
-      /* Get a page of memory. */
-      uint8_t *kpage = get_frame(PAL_USER);
-      if (kpage == NULL)
+      bool load_success = load_page(upage);
+      if (!load_success)
         return false;
-      
-      /* Load this page. */
-      if (file_read(file, kpage, page_read_bytes) != (int)page_read_bytes)
-      {
-        free_frame(kpage);
-        return false;
-      }
-      memset(kpage + page_read_bytes, 0, page_zero_bytes);
-
-      /* Add the page to the process's address space. */
-      if (!install_page(upage, kpage, writable))
-      {
-        free_frame(kpage);
-        return false;
-      }
-
       read_first_page = true;
-      // printf("loaded upage %p in for thread %s\n", upage, thread_current()->name);
     }
-
-    hash_insert(&thread_current()->spt, &page->hash_elem);
     // printf("inserted upage %p in hash for thread %s\n", upage, thread_current()->name);
 
     /* Advance. */
@@ -663,17 +638,10 @@ setup_stack(void **esp, const char *cmdline)
       /* Set esp to final location */
       *esp = esp_return_start;
 
-      // add first stack frame into the spt
-      struct page *page = malloc(sizeof (struct page));
-      page->virtual_addr = pg_round_down(esp);
-      page->process_reference = thread_current();
-      page->loaded = true;
-      page->memory_flag = IN_MEM;
-      page->writable = true;
-      hash_insert(&thread_current()->spt, &page->hash_elem);
+      /* Add first stack frame into the spt */
+      page_create_zero_entry(pg_round_down(esp), kpage, true, true);
     }
     else
-      // palloc_free_page(kpage);
       free_frame(kpage);
   }
   return success;

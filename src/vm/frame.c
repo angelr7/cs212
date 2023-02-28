@@ -58,12 +58,12 @@ void* get_frame(enum palloc_flags flags)
 
 }
 
-void free_frame(void* page)
+void free_frame(void* kpage)
 {
     for (size_t i = 0; i < frame_table_size; i++)
     {
         // printf("i: %d, frametablesize: %d\n", i, frame_table_size);
-        if (frame_table[i]->physical_address == page)
+        if (frame_table[i]->physical_address == kpage)
         {
             ASSERT(bitmap_all (used_map, i, 1));
             bitmap_set(used_map, i, false);

@@ -4,6 +4,7 @@
         "filesys.h": "c",
         "list.h": "c",
         "file.h": "c",
-        "pagedir.h": "c"
+        "pagedir.h": "c",
+        "*.inc": "c"
     }
 }

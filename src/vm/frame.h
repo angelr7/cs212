@@ -5,6 +5,6 @@
 void frame_table_init(void);
 void frame_table_set_size(size_t size);
 void* get_frame(enum palloc_flags flags);
-void free_frame(void* page);
+void free_frame(void* kpage);
 
 #endif  /* vm/frame.h */

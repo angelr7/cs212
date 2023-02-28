@@ -123,6 +123,8 @@ struct thread
    /* VM */
    struct hash spt;            /* Supplemental page table. */
    void *esp;                  /* esp pointer. */
+   struct list mapid_list;     /* List of thread's current file mappings */
+   int cur_mapid;              /* Thread current mapid number to assign for mmap calls*/
 
 #ifdef USERPROG
    /* Owned by userprog/process.c. */

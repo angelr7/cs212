@@ -454,7 +454,9 @@ init_thread(struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
   list_init(&t->children);
   t->cur_fd = 2;
+  t->cur_mapid = 0;
   list_init(&t->fd_list);
+  list_init(&t->mapid_list);
 
   old_level = intr_disable();
   list_push_back(&all_list, &t->allelem);

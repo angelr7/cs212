@@ -44,4 +44,6 @@ void page_create_file_entry(void *uaddr, void *kpage, struct file *file, off_t f
 struct page *page_fetch(void *uaddr);
 void page_free(struct page *page_entry);
 
+void free_thread_pages();
+
 #endif  /* vm/page.h */

@@ -210,10 +210,13 @@ void process_exit(void)
        directory before destroying the process's page
        directory, or our active page directory will be one
        that's been freed (and cleared). */
+    free_thread_pages();
     cur->pagedir = NULL;
     pagedir_activate(NULL);
     pagedir_destroy(pd);
   }
+
+
 }
 
 /* Sets up the CPU for running user code in the current

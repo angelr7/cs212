@@ -152,13 +152,24 @@ void page_free(struct page *page_entry)
 {
     if (page_entry->physical_addr != NULL)
     {
-        if (page_entry->mapid != NO_MAPID)
+        if (page_entry->mapid != NO_MAPID && pagedir_is_dirty(thread_current()->pagedir, page_entry->virtual_addr))
             file_write_at(page_entry->file, page_entry->virtual_addr, page_entry->page_read_bytes, page_entry->file_ofs);
         pagedir_clear_page(thread_current()->pagedir, page_entry->virtual_addr);
         free_frame(page_entry->physical_addr);
     }
     hash_delete(&thread_current()->spt, &page_entry->hash_elem);
+    
     free(page_entry);
+}
+
+void free_thread_pages() {
+    struct thread *t = thread_current();
+    struct hash_iterator i;
+    while (hash_first (&i, t->spt) && hash_next(&i) != NULL)
+    {   
+        struct page *page = hash_entry (hash_cur (&i), struct page, hash_elem);
+        page_free(page);
+    }
 }
 
 // supplemental page table elems -- done

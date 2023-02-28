@@ -560,6 +560,11 @@ munmap(mapid_t mapping, struct intr_frame *f)
   struct mapid_elem *m = list_find_mapid_elem(thread_current(), mapping);
   if (m == NULL)
     return;
+ 
+  // this goes through all of the pages that belong to this mapping, and it 
+  // frees them all, one by one. it will continue until a fetched page equals
+  // NULL, or until it runs into another page that doesn't correspond to this
+  // mapid.
   void *cur_addr = m->start_addr;
   struct page *cur_page_entry = page_fetch(cur_addr);
   while (cur_page_entry != NULL && cur_page_entry->mapid == mapping)
@@ -569,6 +574,9 @@ munmap(mapid_t mapping, struct intr_frame *f)
     cur_page_entry = page_fetch(cur_addr);
   }
 
+  // get the fd_elem for the fd that corresponded to our mmap call we're unmapping.
+  // if we see that our number of mappings is equal to 0, or that the "close" call
+  // was used on this fd, we close it right away.
   struct list_elem *fd_list_elem = list_find_fd_elem(thread_current(), m->fd);
   struct fd_elem *found_fd_elem = list_entry(fd_list_elem, struct fd_elem, elem);
   found_fd_elem->num_mappings--;

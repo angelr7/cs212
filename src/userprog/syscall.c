@@ -35,7 +35,7 @@ static void seek(int fd, unsigned position);
 static void tell(int fd, struct intr_frame *f);
 static void close(int fd);
 static void mmap(int fd, void *addr, struct intr_frame *f);
-static void munmap(mapid_t mapping, struct intr_frame *f);
+static void munmap(mapid_t mapping);
 
 struct fd_elem
 {
@@ -132,7 +132,7 @@ syscall_handler(struct intr_frame *f)
     mmap((int)arg1, (void *)arg2, f);
     break;
   case SYS_MUNMAP:
-    munmap((mapid_t)arg1, f);
+    munmap((mapid_t)arg1);
     break;
   }
 }
@@ -269,6 +269,18 @@ void exit_handler(int status)
   if (prev)
     free(prev);
   lock_release(&filesys_lock);
+
+  struct mapid_elem *lastElem = NULL;
+  for (struct list_elem *e = list_begin(&cur->mapid_list);
+       e != list_end(&cur->mapid_list);
+       e = list_next(e))
+  {
+    if (lastElem) free(lastElem);
+    struct mapid_elem *mapid_elem = list_entry(e, struct mapid_elem, elem);
+    munmap(mapid_elem->mapid);
+    lastElem = mapid_elem;
+  }
+  if (lastElem) free(lastElem);
 
   /*if parent has exited then free yourself*/
   if (process_info->tried_to_free)
@@ -555,7 +567,7 @@ mmap(int fd, void *addr, struct intr_frame *f)
 }
 
 static void
-munmap(mapid_t mapping, struct intr_frame *f)
+munmap(mapid_t mapping)
 {
   struct mapid_elem *m = list_find_mapid_elem(thread_current(), mapping);
   if (m == NULL)

@@ -11,7 +11,7 @@
 
 void page_create_zero_entry(void *uaddr, void *kpage, bool writable, bool loaded);
 void page_create_file_entry(void *uaddr, void *kpage, struct file *file, off_t file_ofs,
-                             size_t read_bytes, size_t zero_bytes, bool writable, mapid_t mapid);
+                            size_t read_bytes, size_t zero_bytes, bool writable, mapid_t mapid);
 struct page *page_fetch(void *uaddr);
 
 /* Returns a hash value for page p. */
@@ -64,7 +64,7 @@ bool load_page(void *fault_addr)
         }
         return false;
     }
-    
+
     // struct page *p = hash_entry(found_elem, struct page, hash_elem);
     if (p->memory_flag == IN_DISK)
     {
@@ -104,7 +104,7 @@ bool load_page(void *fault_addr)
 
 void page_create_zero_entry(void *uaddr, void *kpage, bool writable, bool loaded)
 {
-    struct page *page = malloc(sizeof (struct page));
+    struct page *page = malloc(sizeof(struct page));
     page->virtual_addr = uaddr;
     page->physical_addr = kpage;
     page->process_reference = thread_current();
@@ -119,10 +119,10 @@ void page_create_zero_entry(void *uaddr, void *kpage, bool writable, bool loaded
 }
 
 void page_create_file_entry(void *uaddr, void *kpage, struct file *file, off_t file_ofs,
-                             size_t read_bytes, size_t zero_bytes, 
-                             bool writable, mapid_t mapid)
+                            size_t read_bytes, size_t zero_bytes,
+                            bool writable, mapid_t mapid)
 {
-    struct page *page = malloc(sizeof (struct page));
+    struct page *page = malloc(sizeof(struct page));
     page->virtual_addr = uaddr;
     page->physical_addr = kpage;
     page->process_reference = thread_current();
@@ -158,16 +158,16 @@ void page_free(struct page *page_entry)
         free_frame(page_entry->physical_addr);
     }
     hash_delete(&thread_current()->spt, &page_entry->hash_elem);
-    
     free(page_entry);
 }
 
-void free_thread_pages() {
+void free_thread_pages()
+{
     struct thread *t = thread_current();
     struct hash_iterator i;
-    while (hash_first (&i, t->spt) && hash_next(&i) != NULL)
-    {   
-        struct page *page = hash_entry (hash_cur (&i), struct page, hash_elem);
+    while (hash_first(&i, t->spt) && hash_next(&i) != NULL)
+    {
+        struct page *page = hash_entry(hash_cur(&i), struct page, hash_elem);
         page_free(page);
     }
 }

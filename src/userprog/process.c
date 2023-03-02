@@ -642,7 +642,7 @@ setup_stack(void **esp, const char *cmdline)
       *esp = esp_return_start;
 
       /* Add first stack frame into the spt */
-      page_create_zero_entry(pg_round_down(esp), kpage, true, true);
+      page_create_zero_entry(pg_round_down(*esp), kpage, true, true);
     }
     else
       free_frame(kpage);

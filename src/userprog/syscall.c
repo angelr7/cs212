@@ -253,34 +253,24 @@ void exit_handler(int status)
     else
       child->tried_to_free = true;
   }
+  
+  /* Loop through mappings and unmap all */
+  struct list_elem *e = list_begin(&cur->mapid_list);
+  while (e != list_end(&cur->mapid_list))
+  {
+    struct mapid_elem *mapid_elem = list_entry(e, struct mapid_elem, elem);
+    e = list_next(e);
+    munmap(mapid_elem->mapid);
+  }
+
   /*loop through fd_list and free fds*/
-  lock_acquire(&filesys_lock);
-  struct fd_elem *prev = NULL;
   for (struct list_elem *e = list_begin(&cur->fd_list);
        e != list_end(&cur->fd_list);
        e = list_next(e))
   {
-    if (prev)
-      free(prev);
     struct fd_elem *fd_elem = list_entry(e, struct fd_elem, elem);
     file_close(fd_elem->file);
-    prev = fd_elem;
   }
-  if (prev)
-    free(prev);
-  lock_release(&filesys_lock);
-
-  struct mapid_elem *lastElem = NULL;
-  for (struct list_elem *e = list_begin(&cur->mapid_list);
-       e != list_end(&cur->mapid_list);
-       e = list_next(e))
-  {
-    if (lastElem) free(lastElem);
-    struct mapid_elem *mapid_elem = list_entry(e, struct mapid_elem, elem);
-    munmap(mapid_elem->mapid);
-    lastElem = mapid_elem;
-  }
-  if (lastElem) free(lastElem);
 
   /*if parent has exited then free yourself*/
   if (process_info->tried_to_free)
@@ -581,7 +571,7 @@ munmap(mapid_t mapping)
   struct page *cur_page_entry = page_fetch(cur_addr);
   while (cur_page_entry != NULL && cur_page_entry->mapid == mapping)
   {
-    page_free(cur_page_entry);
+    page_free(cur_page_entry, true);
     cur_addr += PGSIZE;
     cur_page_entry = page_fetch(cur_addr);
   }

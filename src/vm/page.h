@@ -42,8 +42,8 @@ void page_create_file_entry(void *uaddr, void *kpage, struct file *file, off_t f
                              size_t read_bytes, size_t zero_bytes, 
                              bool writable, mapid_t mapid);
 struct page *page_fetch(void *uaddr);
-void page_free(struct page *page_entry);
+void page_free(struct page *page_entry, bool delete_entry);
 
-void free_thread_pages();
+void free_thread_pages(void);
 
 #endif  /* vm/page.h */

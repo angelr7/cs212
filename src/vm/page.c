@@ -148,7 +148,7 @@ struct page *page_fetch(void *uaddr)
     return hash_entry(found_elem, struct page, hash_elem);
 }
 
-void page_free(struct page *page_entry)
+void page_free(struct page *page_entry, bool delete_entry)
 {
     if (page_entry->physical_addr != NULL)
     {
@@ -157,19 +157,20 @@ void page_free(struct page *page_entry)
         pagedir_clear_page(thread_current()->pagedir, page_entry->virtual_addr);
         free_frame(page_entry->physical_addr);
     }
-    hash_delete(&thread_current()->spt, &page_entry->hash_elem);
+    if (delete_entry)
+        hash_delete(&thread_current()->spt, &page_entry->hash_elem);
     free(page_entry);
+}
+
+static void free_page_destructor(struct hash_elem *e, void *AUX UNUSED)
+{
+    page_free(hash_entry(e, struct page, hash_elem), false);
 }
 
 void free_thread_pages()
 {
     struct thread *t = thread_current();
-    struct hash_iterator i;
-    while (hash_first(&i, t->spt) && hash_next(&i) != NULL)
-    {
-        struct page *page = hash_entry(hash_cur(&i), struct page, hash_elem);
-        page_free(page);
-    }
+    hash_destroy(&t->spt, free_page_destructor);
 }
 
 // supplemental page table elems -- done

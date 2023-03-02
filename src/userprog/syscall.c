@@ -219,7 +219,7 @@ static void
 verify_writable(const void *pointer, int size)
 {
   void *cur = pointer;
-  struct page *p = page_fetch(cur);
+  struct page *p = page_fetch(thread_current(), cur);
   if (p != NULL && !p->writable)
     exit_handler(-1);
 }
@@ -524,7 +524,7 @@ mmap(int fd, void *addr, struct intr_frame *f)
   for (int pageNum = 0; pageNum < totPages; pageNum++)
   {
     void *currPage = addr + pageNum * PGSIZE;
-    if (page_fetch(currPage) != NULL)
+    if (page_fetch(thread_current(), currPage) != NULL)
     {
       f->eax = -1;
       return;
@@ -568,12 +568,12 @@ munmap(mapid_t mapping)
   // NULL, or until it runs into another page that doesn't correspond to this
   // mapid.
   void *cur_addr = m->start_addr;
-  struct page *cur_page_entry = page_fetch(cur_addr);
+  struct page *cur_page_entry = page_fetch(thread_current(), cur_addr);
   while (cur_page_entry != NULL && cur_page_entry->mapid == mapping)
   {
     page_free(cur_page_entry, true);
     cur_addr += PGSIZE;
-    cur_page_entry = page_fetch(cur_addr);
+    cur_page_entry = page_fetch(thread_current(), cur_addr);
   }
 
   // get the fd_elem for the fd that corresponded to our mmap call we're unmapping.

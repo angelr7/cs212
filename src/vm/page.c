@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include "frame.h"
 #include "vm/page.h"
+#include "swap.h"
 #include "filesys/file.h"
 #include "threads/vaddr.h"
 #include "threads/palloc.h"
@@ -12,7 +13,7 @@
 void page_create_zero_entry(void *uaddr, void *kpage, bool writable, bool loaded);
 void page_create_file_entry(void *uaddr, void *kpage, struct file *file, off_t file_ofs,
                             size_t read_bytes, size_t zero_bytes, bool writable, mapid_t mapid);
-struct page *page_fetch(void *uaddr);
+struct page *page_fetch(struct thread *t, void *uaddr);
 
 /* Returns a hash value for page p. */
 unsigned
@@ -38,17 +39,14 @@ void init_supplemental_table(struct hash *supplemental_table)
 
 bool load_page(void *fault_addr)
 {
-    struct page *p = page_fetch(fault_addr);
+    struct page *p = page_fetch(thread_current(), fault_addr);
     void *upage = pg_round_down(fault_addr);
-    // struct page find_page;
-    // find_page.virtual_addr = upage;
-
-    // struct hash_elem *found_elem = hash_find(&thread_current()->spt, &find_page.hash_elem);
+    
     if (p == NULL)
     {
         if (fault_addr <= thread_current()->esp && fault_addr >= thread_current()->esp - 32)
         {
-            uint8_t *kpage = get_frame(PAL_USER);
+            uint8_t *kpage = get_frame(upage, PAL_USER);
             if (kpage == NULL)
                 return false;
             memset(kpage, 0, PGSIZE);
@@ -65,12 +63,11 @@ bool load_page(void *fault_addr)
         return false;
     }
 
-    // struct page *p = hash_entry(found_elem, struct page, hash_elem);
+    void *kpage = get_frame(upage, PAL_USER);
+    if (kpage == NULL)
+        return false;
     if (p->memory_flag == IN_DISK)
     {
-        uint8_t *kpage = get_frame(PAL_USER);
-        if (kpage == NULL)
-            return false;
         if (file_read_at(p->file, kpage, p->page_read_bytes, p->file_ofs) != (int)p->page_read_bytes)
         {
             free_frame(kpage);
@@ -82,23 +79,27 @@ bool load_page(void *fault_addr)
             free_frame(kpage);
             return false;
         }
-        p->physical_addr = kpage;
-        p->loaded = true;
     }
-    else if (p->memory_flag == ALL_ZEROES)
+    // else if (p->memory_flag == ALL_ZEROES)
+    // {
+    //     uint8_t *kpage = get_frame(upage, PAL_USER);
+    //     if (kpage == NULL)
+    //         return false;
+    //     memset(kpage, 0, p->page_zero_bytes);
+    //     if (!install_page(upage, kpage, p->writable))
+    //     {
+    //         free_frame(kpage);
+    //         return false;
+    //     }
+    //     p->physical_addr = kpage;
+    //     p->loaded = true;
+    // }
+    else if (p->memory_flag == IN_SWAP)
     {
-        uint8_t *kpage = get_frame(PAL_USER);
-        if (kpage == NULL)
-            return false;
-        memset(kpage, 0, p->page_zero_bytes);
-        if (!install_page(upage, kpage, p->writable))
-        {
-            free_frame(kpage);
-            return false;
-        }
-        p->physical_addr = kpage;
-        p->loaded = true;
+        swap_remove(kpage, p->swap_slot);
+        p->swap_slot = -1;
     }
+    p->physical_addr = kpage;
     return true;
 }
 
@@ -136,13 +137,13 @@ void page_create_file_entry(void *uaddr, void *kpage, struct file *file, off_t f
     hash_insert(&thread_current()->spt, &page->hash_elem);
 }
 
-struct page *page_fetch(void *uaddr)
+struct page *page_fetch(struct thread *t, void *uaddr)
 {
     void *upage = pg_round_down(uaddr);
     struct page find_page;
     find_page.virtual_addr = upage;
 
-    struct hash_elem *found_elem = hash_find(&thread_current()->spt, &find_page.hash_elem);
+    struct hash_elem *found_elem = hash_find(&t->spt, &find_page.hash_elem);
     if (found_elem == NULL)
         return NULL;
     return hash_entry(found_elem, struct page, hash_elem);

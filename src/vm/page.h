@@ -21,7 +21,7 @@ struct page {
     void *physical_addr;
     struct hash_elem hash_elem;
     struct thread *process_reference;
-    bool loaded;
+    bool loaded; // delete this 
     short memory_flag;    
     struct file *file;
     off_t file_ofs;
@@ -29,6 +29,7 @@ struct page {
     size_t page_zero_bytes;
     bool writable;
     mapid_t mapid;
+    int swap_slot;
 };
 
 void init_supplemental_table(struct hash*);
@@ -41,7 +42,7 @@ void page_create_zero_entry(void *uaddr, void *kpage, bool writable, bool loaded
 void page_create_file_entry(void *uaddr, void *kpage, struct file *file, off_t file_ofs,
                              size_t read_bytes, size_t zero_bytes, 
                              bool writable, mapid_t mapid);
-struct page *page_fetch(void *uaddr);
+struct page *page_fetch(struct thread *t, void *uaddr);
 void page_free(struct page *page_entry, bool delete_entry);
 
 void free_thread_pages(void);

@@ -503,7 +503,7 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
   ASSERT(ofs % PGSIZE == 0);
 
   file_seek(file, ofs);
-  bool all_zero = (read_bytes == 0);
+  // bool all_zero = (read_bytes == 0);
   bool read_first_page = false;
   while (read_bytes > 0 || zero_bytes > 0)
   {
@@ -513,10 +513,10 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
     size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
     size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-    if (all_zero)
-      page_create_zero_entry(upage, NULL, writable, !read_first_page);
-    else
-      page_create_file_entry(upage, NULL, file, ofs, page_read_bytes, page_zero_bytes, writable, NO_MAPID);
+    // if (all_zero)
+    //   page_create_zero_entry(upage, NULL, writable, !read_first_page);
+    // else
+    page_create_file_entry(upage, NULL, file, ofs, page_read_bytes, page_zero_bytes, writable, NO_MAPID);
 
     if (!read_first_page)
     {
@@ -545,7 +545,7 @@ setup_stack(void **esp, const char *cmdline)
   uint8_t *kpage;
   bool success = false;
 
-  kpage = get_frame(PAL_USER | PAL_ZERO);
+  kpage = get_frame(((uint8_t *)PHYS_BASE) - PGSIZE, PAL_USER | PAL_ZERO);
   if (kpage != NULL)
   {
     success = install_page(((uint8_t *)PHYS_BASE) - PGSIZE, kpage, true);

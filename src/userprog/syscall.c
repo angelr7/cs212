@@ -417,6 +417,7 @@ write(int fd, const void *buffer, unsigned int length, struct intr_frame *f)
   }
   struct fd_elem *found_fd_elem = list_entry(fd_list_elem, struct fd_elem, elem);
   lock_acquire(&filesys_lock);
+  // pinned = true;
   int bytes_written = file_write(found_fd_elem->file, buffer, length);
   lock_release(&filesys_lock);
   f->eax = bytes_written;

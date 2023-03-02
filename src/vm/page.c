@@ -66,7 +66,7 @@ bool load_page(void *fault_addr)
     void *kpage = get_frame(upage, PAL_USER);
     if (kpage == NULL)
         return false;
-    if (p->memory_flag == IN_DISK)
+    if (p->memory_flag == IN_DISK || p->memory_flag == ALL_ZEROES)
     {
         if (file_read_at(p->file, kpage, p->page_read_bytes, p->file_ofs) != (int)p->page_read_bytes)
         {
@@ -74,32 +74,19 @@ bool load_page(void *fault_addr)
             return false;
         }
         memset(kpage + p->page_read_bytes, 0, p->page_zero_bytes);
-        if (!install_page(upage, kpage, p->writable))
-        {
-            free_frame(kpage);
-            return false;
-        }
     }
-    // else if (p->memory_flag == ALL_ZEROES)
-    // {
-    //     uint8_t *kpage = get_frame(upage, PAL_USER);
-    //     if (kpage == NULL)
-    //         return false;
-    //     memset(kpage, 0, p->page_zero_bytes);
-    //     if (!install_page(upage, kpage, p->writable))
-    //     {
-    //         free_frame(kpage);
-    //         return false;
-    //     }
-    //     p->physical_addr = kpage;
-    //     p->loaded = true;
-    // }
     else if (p->memory_flag == IN_SWAP)
     {
         swap_remove(kpage, p->swap_slot);
         p->swap_slot = -1;
     }
+    if (!install_page(upage, kpage, p->writable))
+    {
+        free_frame(kpage);
+        return false;
+    }
     p->physical_addr = kpage;
+    p->memory_flag = IN_MEM;
     return true;
 }
 

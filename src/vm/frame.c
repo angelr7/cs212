@@ -27,7 +27,7 @@ struct frame_entry
 void frame_table_init(void)
 {
     frame_table = malloc(sizeof(struct frame_entry *) * frame_table_size);
-    used_map = bitmap_create(frame_table_size);
+    used_map = bitmap_create(frame_table_size - 1);
     lock_init(&bitmap_lock);
     cur_evict = 0;
     void *kernel_addr;

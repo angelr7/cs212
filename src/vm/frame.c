@@ -110,12 +110,16 @@ void free_frame(void* kpage)
     for (size_t i = 0; i < frame_table_size; i++)
     {
         // printf("i: %d, frametablesize: %d\n", i, frame_table_size);
+        lock_acquire(&frame_table[i]->lock);
         if (frame_table[i]->physical_address == kpage)
         {
             ASSERT(bitmap_all (used_map, i, 1));
             bitmap_set(used_map, i, false);
             frame_table[i]->process_thread = NULL;
+            frame_table[i]->virtual_address = NULL;
+            lock_release(&frame_table[i]->lock);
             break;
         }
+        lock_release(&frame_table[i]->lock);
     }
 }

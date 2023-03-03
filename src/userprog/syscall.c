@@ -154,6 +154,7 @@ syscall_handler(struct intr_frame *f)
     break;
   }
 
+  unpin(f->esp);
 }
 
 /*Search through fd list and return fd_elem with corresponding fd */
@@ -217,9 +218,9 @@ verify_pointer(const void *pointer, int size)
       exit_handler(-1);
     }
 
-    if (!pd1 && spt1)
+    if (pd1 && !spt1)
     {
-      if (load_page(p1.virtual_addr))
+      if (!load_page(p1.virtual_addr))
         exit_handler(-1);
 
       lock_acquire(&p1.frame->lock);

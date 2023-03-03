@@ -36,6 +36,7 @@ static void tell(int fd, struct intr_frame *f);
 static void close(int fd);
 static void mmap(int fd, void *addr, struct intr_frame *f);
 static void munmap(mapid_t mapping);
+static void unpin(void *virtual_address);
 
 struct fd_elem
 {
@@ -60,6 +61,14 @@ void syscall_init(void)
   intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
+static void unpin(void *virtual_address)
+{
+  struct page *p = page_fetch(thread_current(), virtual_address);
+  lock_acquire(&p->frame->lock);
+  p->frame->pinned = false;
+  lock_release(&p->frame->lock);
+}
+
 static void
 syscall_handler(struct intr_frame *f)
 {
@@ -74,16 +83,19 @@ syscall_handler(struct intr_frame *f)
   {
     verify_pointer(f->esp + 4, sizeof(uint32_t));
     arg1 = *(uint32_t *)(f->esp + 4);
+    unpin(f->esp + 4);
   }
   if (syscall_num == SYS_CREATE || syscall_num == SYS_READ || syscall_num == SYS_WRITE || syscall_num == SYS_SEEK || syscall_num == SYS_MMAP)
   {
     verify_pointer(f->esp + 8, sizeof(uint32_t));
     arg2 = *(uint32_t *)(f->esp + 8);
+    unpin(f->esp + 8);
   }
   if (syscall_num == SYS_READ || syscall_num == SYS_WRITE)
   {
     verify_pointer(f->esp + 8, sizeof(uint32_t));
     arg3 = *(uint32_t *)(f->esp + 12);
+    unpin(f->esp + 12);
   }
 
   // call syscall function
@@ -97,27 +109,33 @@ syscall_handler(struct intr_frame *f)
     break;
   case SYS_EXEC:
     exec((const char *)arg1, f);
+    unpin(arg1);
     break;
   case SYS_WAIT:
     wait((pid_t)arg1, f);
     break;
   case SYS_CREATE:
     create((const char *)arg1, (unsigned int)arg2, f);
+    unpin(arg1);
     break;
   case SYS_REMOVE:
     remove((const char *)arg1, f);
+    unpin(arg1);
     break;
   case SYS_OPEN:
     open((const char *)arg1, f);
+    unpin(arg1);
     break;
   case SYS_FILESIZE:
     filesize((int)arg1, f);
     break;
   case SYS_READ:
     read((int)arg1, (void *)arg2, (unsigned int)arg3, f);
+    unpin(arg2);
     break;
   case SYS_WRITE:
     write((int)arg1, (const void *)arg2, (unsigned int)arg3, f);
+    unpin(arg2);
     break;
   case SYS_SEEK:
     seek((int)arg1, (unsigned int)arg2);
@@ -135,6 +153,7 @@ syscall_handler(struct intr_frame *f)
     munmap((mapid_t)arg1);
     break;
   }
+
 }
 
 /*Search through fd list and return fd_elem with corresponding fd */
@@ -193,12 +212,19 @@ verify_pointer(const void *pointer, int size)
     bool spt1 = hash_find(&thread_current()->spt, &p1.hash_elem) == NULL;
     bool pd2 = pagedir_get_page(pd, last_byte) == NULL;
     bool spt2 = hash_find(&thread_current()->spt, &p2.hash_elem) == NULL;
-    // if ((pagedir_get_page(pd, pointer) == NULL && hash_find(&thread_current()->spt, &p1.hash_elem) == NULL) ||
-    //  (pagedir_get_page(pd, last_byte) == NULL && hash_find(&thread_current()->spt, &p2.hash_elem) == NULL))
-    // {
     if ((pd1 && spt1) || (pd2 && spt2))
     {
       exit_handler(-1);
+    }
+
+    if (!pd1 && spt1)
+    {
+      if (load_page(p1.virtual_addr))
+        exit_handler(-1);
+
+      lock_acquire(&p1.frame->lock);
+      p1.frame->pinned = true;
+      lock_release(&p1.frame->lock);
     }
   }
   else
@@ -253,7 +279,7 @@ void exit_handler(int status)
     else
       child->tried_to_free = true;
   }
-  
+
   /* Loop through mappings and unmap all */
   struct list_elem *e = list_begin(&cur->mapid_list);
   while (e != list_end(&cur->mapid_list))
@@ -563,8 +589,8 @@ munmap(mapid_t mapping)
   struct mapid_elem *m = list_find_mapid_elem(thread_current(), mapping);
   if (m == NULL)
     return;
- 
-  // this goes through all of the pages that belong to this mapping, and it 
+
+  // this goes through all of the pages that belong to this mapping, and it
   // frees them all, one by one. it will continue until a fetched page equals
   // NULL, or until it runs into another page that doesn't correspond to this
   // mapid.

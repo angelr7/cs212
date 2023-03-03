@@ -16,14 +16,6 @@ static struct bitmap *used_map;
 static struct lock bitmap_lock;
 static int cur_evict;
 
-struct frame_entry
-{
-    void* physical_address;
-    void *virtual_address;
-    struct thread* process_thread;
-    // struct lock *lock;
-};
-
 void frame_table_init(void)
 {
     frame_table = malloc(sizeof(struct frame_entry *) * frame_table_size);
@@ -37,7 +29,7 @@ void frame_table_init(void)
         struct frame_entry *entry = malloc(sizeof(struct frame_entry));
         entry->physical_address = kernel_addr;
         entry->process_thread = NULL;
-        // lock_init(entry->lock);
+        lock_init(&entry->lock);
         frame_table[i++] = entry;
     }
 }
@@ -50,8 +42,19 @@ void frame_table_set_size(size_t size)
 static size_t evict_algo(void)
 {
     // TODO: run clock algo to get evicting frame index
-    struct frame_entry *f = frame_table[cur_evict];
+    int evict_idx = cur_evict % (frame_table_size - 1);
+    cur_evict++;
+    struct frame_entry *f = frame_table[evict_idx];
+    while (f->pinned) {
+        evict_idx = cur_evict % (frame_table_size - 1);
+        cur_evict++;
+        f = frame_table[evict_idx];
+    }
+
     struct page *p = page_fetch(f->process_thread, f->virtual_address);
+    p->physical_addr = NULL;
+    pagedir_clear_page(f->process_thread->pagedir, p->virtual_addr);
+    
     /* Evicting read-only page from executable */
     if (p->mapid == NO_MAPID && !p->writable)
     {
@@ -69,24 +72,29 @@ static size_t evict_algo(void)
         file_write_at(p->file, p->physical_addr, p->page_read_bytes, p->file_ofs);
         p->memory_flag = IN_DISK;
     }
-    p->physical_addr = NULL;
-    pagedir_clear_page(f->process_thread->pagedir, p->virtual_addr);
-    return cur_evict++;
+    
+    return evict_idx;
 }
 
 // TODO: take in virtual adress to keep track in frame entry
-void* get_frame(void *uaddr, enum palloc_flags flags)
+struct frame_entry* get_frame(void *uaddr, enum palloc_flags flags)
 {
     ASSERT(flags & PAL_USER);
     lock_acquire(&bitmap_lock);
     size_t idx = bitmap_scan_and_flip(used_map, 0, 1, false);
     lock_release(&bitmap_lock);
+
     if (idx == BITMAP_ERROR)
         idx = evict_algo();
+    
     struct frame_entry *frame = frame_table[idx];
+    
+    lock_acquire(&frame->lock);
     frame->process_thread = thread_current();
     frame->virtual_address = uaddr;
-    return frame->physical_address;
+    lock_release(&frame->lock);
+    
+    return frame;
 
 
     // Swapping

@@ -545,7 +545,8 @@ setup_stack(void **esp, const char *cmdline)
   uint8_t *kpage;
   bool success = false;
 
-  kpage = get_frame(((uint8_t *)PHYS_BASE) - PGSIZE, PAL_USER | PAL_ZERO);
+  struct frame_entry *frame = get_frame(((uint8_t *)PHYS_BASE) - PGSIZE, PAL_USER | PAL_ZERO);
+  kpage = frame->physical_address;
   if (kpage != NULL)
   {
     success = install_page(((uint8_t *)PHYS_BASE) - PGSIZE, kpage, true);
@@ -642,7 +643,7 @@ setup_stack(void **esp, const char *cmdline)
       *esp = esp_return_start;
 
       /* Add first stack frame into the spt */
-      page_create_zero_entry(pg_round_down(*esp), kpage, true, true);
+      page_create_zero_entry(pg_round_down(*esp), frame, true, true);
     }
     else
       free_frame(kpage);

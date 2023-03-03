@@ -31,7 +31,6 @@ int swap_add(void *phys_addr)
 
 void swap_remove(void *phys_addr, int swap_slot)
 {
-    // printf("%d\n", swap_slot);
     ASSERT(swap_slot >= 0 && swap_slot < num_slots);
     ASSERT(bitmap_test(used_map, swap_slot));
     size_t sector_idx = swap_slot * sectors_per_page;

@@ -361,7 +361,10 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
 
   /* Read and verify executable header. */
   lock_acquire(&filesys_lock);
-  if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr || memcmp(ehdr.e_ident, "\177ELF\1\1\1", 7) || ehdr.e_type != 2 || ehdr.e_machine != 3 || ehdr.e_version != 1 || ehdr.e_phentsize != sizeof(struct Elf32_Phdr) || ehdr.e_phnum > 1024)
+  if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr || 
+  memcmp(ehdr.e_ident, "\177ELF\1\1\1", 7) || ehdr.e_type != 2 || 
+  ehdr.e_machine != 3 || ehdr.e_version != 1 || 
+  ehdr.e_phentsize != sizeof(struct Elf32_Phdr) || ehdr.e_phnum > 1024)
   {
     lock_release(&filesys_lock);
     printf("load: %s: error loading executable\n", extracted_file_name);
@@ -542,7 +545,8 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
     // if (all_zero)
     //   page_create_zero_entry(upage, NULL, writable, !read_first_page);
     // else
-    page_create_file_entry(upage, NULL, file, ofs, page_read_bytes, page_zero_bytes, writable, NO_MAPID);
+    page_create_file_entry(upage, NULL, file, ofs, 
+    page_read_bytes, page_zero_bytes, writable, NO_MAPID);
 
     if (!read_first_page)
     {
@@ -571,7 +575,8 @@ setup_stack(void **esp, const char *cmdline)
   uint8_t *kpage;
   bool success = false;
 
-  struct frame_entry *frame = get_frame(((uint8_t *)PHYS_BASE) - PGSIZE, PAL_USER | PAL_ZERO);
+  struct frame_entry *frame = get_frame(((uint8_t *)PHYS_BASE) - PGSIZE, 
+    PAL_USER | PAL_ZERO);
   kpage = frame->physical_address;
   if (kpage != NULL)
   {
@@ -688,5 +693,6 @@ install_page(void *upage, void *kpage, bool writable)
 
   /* Verify that there's not already a page at that virtual
      address, then map our page there. */
-  return (pagedir_get_page(t->pagedir, upage) == NULL && pagedir_set_page(t->pagedir, upage, kpage, writable));
+  return (pagedir_get_page(t->pagedir, upage) == NULL && 
+  pagedir_set_page(t->pagedir, upage, kpage, writable));
 }

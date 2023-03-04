@@ -79,7 +79,8 @@ syscall_handler(struct intr_frame *f)
     arg1 = *(uint32_t *)(f->esp + 4);
     unpin(f->esp + 4, sizeof(uint32_t));
   }
-  if (syscall_num == SYS_CREATE || syscall_num == SYS_READ || syscall_num == SYS_WRITE || syscall_num == SYS_SEEK || syscall_num == SYS_MMAP)
+  if (syscall_num == SYS_CREATE || syscall_num == SYS_READ || syscall_num == SYS_WRITE 
+  || syscall_num == SYS_SEEK || syscall_num == SYS_MMAP)
   {
     verify_pointer(f->esp + 8, sizeof(uint32_t));
     arg2 = *(uint32_t *)(f->esp + 8);
@@ -207,7 +208,8 @@ verify_pointer(const void *pointer, int size)
     {
       struct page p;
       p.virtual_addr = cur_page;
-      if (pagedir_get_page(pd, cur_page) == NULL && hash_find(&t->spt, &p.hash_elem) == NULL)
+      if (pagedir_get_page(pd, cur_page) == NULL && 
+      hash_find(&t->spt, &p.hash_elem) == NULL)
       {
         exit_handler(-1);
       }
@@ -591,7 +593,8 @@ mmap(int fd, void *addr, struct intr_frame *f)
     size_t page_read_bytes = size < PGSIZE ? size : PGSIZE;
     size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-    page_create_file_entry(cur_addr, NULL, found_fd_elem->file, file_ofs, page_read_bytes, page_zero_bytes, true, mapid);
+    page_create_file_entry(cur_addr, NULL, found_fd_elem->file, 
+    file_ofs, page_read_bytes, page_zero_bytes, true, mapid);
 
     size -= PGSIZE;
     file_ofs += PGSIZE;

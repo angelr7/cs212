@@ -71,7 +71,8 @@ bool load_page(void *fault_addr)
         return false;
     if (p->memory_flag == IN_DISK || p->memory_flag == ALL_ZEROES)
     {
-        if (file_read_at(p->file, kpage, p->page_read_bytes, p->file_ofs) != (int)p->page_read_bytes)
+        if (file_read_at(p->file, kpage, p->page_read_bytes, p->file_ofs) 
+            != (int)p->page_read_bytes)
         {
             free_frame(kpage);
             return false;
@@ -94,7 +95,8 @@ bool load_page(void *fault_addr)
     return true;
 }
 
-void page_create_zero_entry(void *uaddr, struct frame_entry *frame, bool writable, bool loaded)
+void page_create_zero_entry(
+    void *uaddr, struct frame_entry *frame, bool writable, bool loaded)
 {
     struct page *page = malloc(sizeof(struct page));
     page->virtual_addr = uaddr;
@@ -111,9 +113,10 @@ void page_create_zero_entry(void *uaddr, struct frame_entry *frame, bool writabl
     hash_insert(&thread_current()->spt, &page->hash_elem);
 }
 
-void page_create_file_entry(void *uaddr, struct frame_entry *frame, struct file *file, off_t file_ofs,
-                            size_t read_bytes, size_t zero_bytes,
-                            bool writable, mapid_t mapid)
+void page_create_file_entry(
+    void *uaddr, struct frame_entry *frame, struct file *file, off_t file_ofs,
+    size_t read_bytes, size_t zero_bytes,
+    bool writable, mapid_t mapid)
 {
     struct page *page = malloc(sizeof(struct page));
     page->virtual_addr = uaddr;
@@ -172,11 +175,3 @@ void free_thread_pages()
     struct thread *t = thread_current();
     hash_destroy(&t->spt, free_page_destructor);
 }
-
-// supplemental page table elems -- done
-// key physical address/kernel virtual address -- done
-// pointer to swap or file on disk -- done
-// on swap -- done
-// zero page? -- done
-// on disk -- done
-// process_id or whatever thread it is -- done

@@ -44,16 +44,33 @@ void frame_table_set_size(size_t size)
 
 static size_t evict_algo(void)
 {
-    // TODO: run clock algo to get evicting frame index
-    // if we find a free frame, return that frame
+
+    //clock algo 
     int evict_idx = cur_evict % (frame_table_size - 1);
     cur_evict++;
     struct frame_entry *f = frame_table[evict_idx];
-    if (f->pinned) {
+    lock_acquire(&f->lock);
+    bool accessed_page = pagedir_is_accessed(f->process_thread->pagedir, 
+        f->virtual_address);
+    while((accessed_page || f->pinned) && f->virtual_address != NULL)
+    {
+        if (accessed_page)
+            pagedir_set_accessed(f->process_thread->pagedir, f->virtual_address, false);
+        lock_release(&f->lock);
         evict_idx = cur_evict % (frame_table_size - 1);
         cur_evict++;
         f = frame_table[evict_idx];
+        lock_acquire(&f->lock);
+        accessed_page = pagedir_is_accessed(f->process_thread->pagedir, 
+            f->virtual_address);
     }
+    lock_release(&f->lock);
+    if (f->virtual_address == NULL)
+    {
+        bitmap_set(used_map,evict_idx,true);
+        return evict_idx;
+    }
+
     struct page *p = page_fetch(f->process_thread, f->virtual_address);
     pagedir_clear_page(f->process_thread->pagedir, p->virtual_addr);
     
@@ -85,14 +102,9 @@ struct frame_entry *get_frame(void *uaddr, enum palloc_flags flags)
     ASSERT(flags & PAL_USER);
     lock_acquire(&bitmap_lock);
     size_t idx = bitmap_scan_and_flip(used_map, 0, 1, false);
-    lock_release(&bitmap_lock);
     if (idx == BITMAP_ERROR)
-    {
-        lock_acquire(&evict_algo_lock);
         idx = evict_algo();
-        lock_release(&evict_algo_lock);
-    }
-        
+    lock_release(&bitmap_lock);
     struct frame_entry *frame = frame_table[idx];
     lock_acquire(&frame->lock);
     frame->process_thread = thread_current();
@@ -105,19 +117,21 @@ void free_frame(void* kpage)
 {
     for (size_t i = 0; i < frame_table_size; i++)
     {
-        lock_acquire(&frame_table[i]->lock);
-        if (frame_table[i]->physical_address == kpage)
+        struct frame_entry *cur_frame = frame_table[i];
+        lock_acquire(&cur_frame->lock);
+        if (cur_frame->physical_address == kpage && 
+            cur_frame->process_thread == thread_current())
         {
             ASSERT(bitmap_all (used_map, i, 1));
             lock_acquire(&bitmap_lock);
             bitmap_set(used_map, i, false);
             lock_release(&bitmap_lock);
-            frame_table[i]->process_thread = NULL;
-            frame_table[i]->virtual_address = NULL;
-            frame_table[i]->pinned = false;
-            lock_release(&frame_table[i]->lock);
+            cur_frame->process_thread = NULL;
+            cur_frame->virtual_address = NULL;
+            cur_frame->pinned = false;
+            lock_release(&cur_frame->lock);
             break;
         }
-        lock_release(&frame_table[i]->lock);
+        lock_release(&cur_frame->lock);
     }
 }

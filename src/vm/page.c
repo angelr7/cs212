@@ -33,11 +33,13 @@ bool page_less(const struct hash_elem *a_, const struct hash_elem *b_,
     return a->virtual_addr < b->virtual_addr;
 }
 
+/* Initialize supplemental page table */
 void init_supplemental_table(struct hash *supplemental_table)
 {
     hash_init(supplemental_table, page_hash, page_less, NULL);
 }
 
+/* Load a page into physical memory at the given virtual fault_addr */
 bool load_page(void *fault_addr)
 {
     struct page *p = page_fetch(thread_current(), fault_addr);
@@ -45,7 +47,8 @@ bool load_page(void *fault_addr)
     
     if (p == NULL)
     {
-        if (fault_addr <= thread_current()->esp && fault_addr >= thread_current()->esp - 32)
+        if (fault_addr <= thread_current()->esp && 
+        fault_addr >= thread_current()->esp - 32)
         {
             struct frame_entry *frame = get_frame(upage, PAL_USER);
             uint8_t *kpage = frame->physical_address;
@@ -95,6 +98,7 @@ bool load_page(void *fault_addr)
     return true;
 }
 
+/* Creates a zero entried page in supplemental page table */
 void page_create_zero_entry(
     void *uaddr, struct frame_entry *frame, bool writable, bool loaded)
 {
@@ -103,7 +107,6 @@ void page_create_zero_entry(
     page->frame = frame;
     page->physical_addr = (frame == NULL) ? NULL : frame->physical_address;
     page->process_reference = thread_current();
-    page->loaded = loaded;
     page->memory_flag = ALL_ZEROES;
     page->file = NULL;
     page->page_read_bytes = 0;
@@ -113,6 +116,7 @@ void page_create_zero_entry(
     hash_insert(&thread_current()->spt, &page->hash_elem);
 }
 
+/* Creates a page from a file entry in supplemental page table */
 void page_create_file_entry(
     void *uaddr, struct frame_entry *frame, struct file *file, off_t file_ofs,
     size_t read_bytes, size_t zero_bytes,
@@ -133,6 +137,8 @@ void page_create_file_entry(
     hash_insert(&thread_current()->spt, &page->hash_elem);
 }
 
+/* Takes virtual address and thread and returns the matching page
+in the supplemental page table */
 struct page *page_fetch(struct thread *t, void *uaddr)
 {
     void *upage = pg_round_down(uaddr);
@@ -145,6 +151,7 @@ struct page *page_fetch(struct thread *t, void *uaddr)
     return hash_entry(found_elem, struct page, hash_elem);
 }
 
+/* Frees a page entry */
 void page_free(struct page *page_entry, bool delete_entry)
 {
     if (page_entry->physical_addr != NULL)
@@ -165,11 +172,13 @@ void page_free(struct page *page_entry, bool delete_entry)
     free(page_entry);
 }
 
+/* wrapper for hash_destroy call*/
 static void free_page_destructor(struct hash_elem *e, void *AUX UNUSED)
 {
     page_free(hash_entry(e, struct page, hash_elem), false);
 }
 
+/* frees all pages associated with a thread*/
 void free_thread_pages()
 {
     struct thread *t = thread_current();

@@ -11,6 +11,7 @@ static int num_slots;
 static size_t sectors_per_page;
 static struct lock swap_lock;
 
+/* Initialize our swap block */
 void swap_init(void)
 {
     swap_block = malloc(sizeof(struct block *));
@@ -21,6 +22,7 @@ void swap_init(void)
     lock_init(&swap_lock);
 }
 
+/* Add data in memory at phys_addr to swap. If swap is full panic*/
 int swap_add(void *phys_addr)
 {
     lock_acquire(&swap_lock);
@@ -37,6 +39,7 @@ int swap_add(void *phys_addr)
     return idx;
 }
 
+/* Remove data from swap and put into memory at location phys_addr*/
 void swap_remove(void *phys_addr, int swap_slot)
 {;
     ASSERT(swap_slot >= 0 && swap_slot < num_slots);

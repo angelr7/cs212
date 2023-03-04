@@ -84,8 +84,6 @@ tid_t process_execute(const char *file_name)
 static void
 start_process(void *file_name_)
 {
-  // struct process_arguments *args = file_name_;
-  // char *file_name = args->filename;
   struct intr_frame if_;
   bool success;
 
@@ -132,10 +130,7 @@ start_process(void *file_name_)
    exception), returns -1.  If TID is invalid or if it was not a
    child of the calling process, or if process_wait() has already
    been successfully called for the given TID, returns -1
-   immediately, without waiting.
-
-   This function will be implemented in problem 2-2.  For now, it
-   does nothing. */
+   immediately, without waiting.*/
 int process_wait(tid_t child_tid)
 {
   bool lock_released = false;
@@ -192,7 +187,7 @@ int process_wait(tid_t child_tid)
   return -1;
 }
 
-/* Free the current process's resources. */
+/* Free the current process's resources as it exits */
 void process_exit(void)
 {
   struct thread *cur = thread_current();
@@ -542,9 +537,6 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
     size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
     size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-    // if (all_zero)
-    //   page_create_zero_entry(upage, NULL, writable, !read_first_page);
-    // else
     page_create_file_entry(upage, NULL, file, ofs, 
     page_read_bytes, page_zero_bytes, writable, NO_MAPID);
 
@@ -555,7 +547,6 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
         return false;
       read_first_page = true;
     }
-    // printf("inserted upage %p in hash for thread %s\n", upage, thread_current()->name);
 
     /* Advance. */
     read_bytes -= page_read_bytes;

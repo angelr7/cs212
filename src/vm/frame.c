@@ -11,19 +11,19 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-static struct frame_entry **frame_table;
-static size_t frame_table_size;
-static struct bitmap *used_map;
-static struct lock bitmap_lock;
-static struct lock evict_algo_lock;
-static int cur_evict;
+static struct frame_entry **frame_table;    /* Array of frame_entry which makes up our frame table */
+static size_t frame_table_size;             /* Frame Table Size */
+static struct bitmap *used_map;             /* Bitmap which keeps track of which spaces in the frame_table are available */
+static struct lock bitmap_lock;             /* Bitmap Lock */
+static int cur_evict;                       /* Index to keep track of last eviction location in frame table */
 
+/*Initialize everything in our frame table. We malloc all frame_entries 
+on initialization and reasign their values as get_frame() is called */
 void frame_table_init(void)
 {
     frame_table = malloc(sizeof(struct frame_entry *) * frame_table_size);
     used_map = bitmap_create(frame_table_size - 1);
     lock_init(&bitmap_lock);
-    lock_init(&evict_algo_lock);
     cur_evict = 0;
     void *kernel_addr;
     int i = 0;
@@ -37,15 +37,20 @@ void frame_table_init(void)
     }
 }
 
+/* Set size of the frame table*/
 void frame_table_set_size(size_t size)
 {
     frame_table_size = size;
 }
 
+/* Internal function to be used by get_frame. 
+We utilize clock eviction, where we evict the first frame 
+which has not been accessed, and update accessed bits along
+the way. We then return the index in our frame table to 
+the location we evicted  */
 static size_t evict_algo(void)
 {
-
-    //clock algo 
+    /* Clock Algo*/
     int evict_idx = cur_evict % (frame_table_size - 1);
     cur_evict++;
     struct frame_entry *f = frame_table[evict_idx];
@@ -55,7 +60,8 @@ static size_t evict_algo(void)
     while((accessed_page || f->pinned) && f->virtual_address != NULL)
     {
         if (accessed_page)
-            pagedir_set_accessed(f->process_thread->pagedir, f->virtual_address, false);
+            pagedir_set_accessed(f->process_thread->pagedir, 
+                f->virtual_address, false);
         lock_release(&f->lock);
         evict_idx = cur_evict % (frame_table_size - 1);
         cur_evict++;
@@ -97,6 +103,9 @@ static size_t evict_algo(void)
     return evict_idx;
 }
 
+/* Retrieves a frame_entry for the calling process using the specified
+virtual address and flags. If a frame is available returns the first
+available, otherwise evicts a frame and returns that one.*/
 struct frame_entry *get_frame(void *uaddr, enum palloc_flags flags)
 {
     ASSERT(flags & PAL_USER);
@@ -113,6 +122,7 @@ struct frame_entry *get_frame(void *uaddr, enum palloc_flags flags)
     return frame;
 }
 
+/* Removes all data/memory in the frame at a given physical address */
 void free_frame(void* kpage)
 {
     for (size_t i = 0; i < frame_table_size; i++)

@@ -4,7 +4,7 @@
 #include "filesys/off_t.h"
 #include "threads/thread.h"
 
-/* These are the different states a file in our page table can be in */
+/* These are the different states/locations a file in our page table can be in */
 #define IN_DISK 0
 #define IN_SWAP 1
 #define ALL_ZEROES 2
@@ -12,25 +12,33 @@
 
 /* This represents that the entry was not created by a call to mmap */
 #define NO_MAPID -1
-// struct hash supplemental_table;
 
 typedef int mapid_t;
 
+/* This is our supplemental page struct, it keeps
+track of all information needed to retrieve a page
+of information in swap or file and write it to memory. */
 struct page {
-    void *virtual_addr;
+    /* In Memory */
     struct frame_entry *frame;
     void *physical_addr;
-    struct hash_elem hash_elem;
-    struct thread *process_reference;
-    bool loaded; // delete this 
-    short memory_flag;    
+
+    /* In Disk */
     struct file *file;
     off_t file_ofs;
     size_t page_read_bytes;
     size_t page_zero_bytes;
-    bool writable;
     mapid_t mapid;
+
+    /* In Swap*/
     int swap_slot;
+
+    /* Everything */
+    void *virtual_addr;
+    struct hash_elem hash_elem;
+    struct thread *process_reference;
+    short memory_flag;    
+    bool writable;
 };
 
 void init_supplemental_table(struct hash*);

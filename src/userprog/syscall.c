@@ -72,7 +72,7 @@ syscall_handler(struct intr_frame *f)
   uint32_t arg2 = 0;
   uint32_t arg3 = 0;
 
-  // initialize arguments
+  /* initialize arguments */
   if (syscall_num != SYS_HALT)
   {
     verify_pointer(f->esp + 4, sizeof(uint32_t));
@@ -80,7 +80,7 @@ syscall_handler(struct intr_frame *f)
     unpin(f->esp + 4, sizeof(uint32_t));
   }
   if (syscall_num == SYS_CREATE || syscall_num == SYS_READ || syscall_num == SYS_WRITE 
-  || syscall_num == SYS_SEEK || syscall_num == SYS_MMAP)
+    || syscall_num == SYS_SEEK || syscall_num == SYS_MMAP)
   {
     verify_pointer(f->esp + 8, sizeof(uint32_t));
     arg2 = *(uint32_t *)(f->esp + 8);
@@ -93,7 +93,7 @@ syscall_handler(struct intr_frame *f)
     unpin(f->esp + 12, sizeof(uint32_t));
   }
 
-  // call syscall function
+  /* call syscall function */
   switch (syscall_num)
   {
   case SYS_HALT:
@@ -186,7 +186,10 @@ list_find_mapid_elem(struct thread *t, mapid_t mapid)
   return NULL;
 }
 
-/* Verify that every byte of data that a pointer points to is valid */
+/* Verify that every page of data that a pointer points to is valid. In 
+the event that we would page fault in the kernel we load in the data
+from supplemental page table to continue the syscall on behalf of user. 
+We pin each of these pages to avoid a page fault. */
 static void
 verify_pointer(const void *pointer, int size)
 {
@@ -469,7 +472,6 @@ write(int fd, const void *buffer, unsigned int length, struct intr_frame *f)
   }
   struct fd_elem *found_fd_elem = list_entry(fd_list_elem, struct fd_elem, elem);
   lock_acquire(&filesys_lock);
-  // pinned = true;
   int bytes_written = file_write(found_fd_elem->file, buffer, length);
   lock_release(&filesys_lock);
   f->eax = bytes_written;
@@ -526,12 +528,10 @@ close(int fd)
   free(found_fd_elem);
 }
 
+/* mmap at a given addr*/
 static void
 mmap(int fd, void *addr, struct intr_frame *f)
 {
-  // we need to make sure that addr begins on the start of a page, and that it
-  // also doesn't equal 0x0. we also need to make sure that they dont use 0 or 1
-  // as a file descriptor.
   if (pg_round_down(addr) != addr || addr == 0x0)
   {
     f->eax = -1;
@@ -543,7 +543,7 @@ mmap(int fd, void *addr, struct intr_frame *f)
     return;
   }
 
-  // find the list_elem that corresponds to fd
+  /* find the list_elem that corresponds to fd */ 
   struct list_elem *fd_list_elem = list_find_fd_elem(thread_current(), fd);
   if (fd_list_elem == NULL)
   {
@@ -551,28 +551,25 @@ mmap(int fd, void *addr, struct intr_frame *f)
     return;
   }
 
-  // get the fd_elem that corresponds to the list_elem, which has the file struct
-  // that we need to get the length of the file
   struct fd_elem *found_fd_elem = list_entry(fd_list_elem, struct fd_elem, elem);
   lock_acquire(&filesys_lock);
   int size = file_length(found_fd_elem->file);
   lock_release(&filesys_lock);
 
-  // if the size of the file is 0, fail
+  /* if the size of the file is 0, fail */ 
   if (size == 0)
   {
     f->eax = -1;
     return;
   }
 
-  // we know that we start on a valid page boundary, so we need to make sure that
-  // the following pages don't overlap with virtual pages that are already used
+  /* Make sure that following pages don't overlap with virtual pages that are already used */
   uint32_t currPtr = (char *)addr + size;
   while (currPtr % PGSIZE != 0)
     currPtr++;
 
-  // determine if we've allocated any of the necessary pages for addr in the spt.
-  // if that's the case, we have overlap, and this pointer isn't valid
+  /* Check if we've allocated any of the necessary pages for addr in the spt.
+  if that's the case, we have overlap, and this pointer isn't valid*/
   int totPages = (currPtr - (uint32_t)addr) / PGSIZE;
   for (int pageNum = 0; pageNum < totPages; pageNum++)
   {
@@ -584,7 +581,7 @@ mmap(int fd, void *addr, struct intr_frame *f)
     }
   }
 
-  // create entries in the spt for each page of the file we're mapping
+  /* Create entries in the spt for each page of the file we're mapping */
   mapid_t mapid = thread_current()->cur_mapid++;
   off_t file_ofs = 0;
   void *cur_addr = addr;
@@ -610,6 +607,7 @@ mmap(int fd, void *addr, struct intr_frame *f)
   f->eax = mapid;
 }
 
+/* unmap all data associated with the given mapid*/
 static void
 munmap(mapid_t mapping)
 {
@@ -617,10 +615,10 @@ munmap(mapid_t mapping)
   if (m == NULL)
     return;
  
-  // this goes through all of the pages that belong to this mapping, and it 
-  // frees them all, one by one. it will continue until a fetched page equals
-  // NULL, or until it runs into another page that doesn't correspond to this
-  // mapid.
+  /* this goes through all of the pages that belong to this mapping, and it 
+  frees them all, one by one. it will continue until a fetched page equals
+  NULL, or until it runs into another page that doesn't correspond to this
+  mapid. */
   void *cur_addr = m->start_addr;
   struct page *cur_page_entry = page_fetch(thread_current(), cur_addr);
   while (cur_page_entry != NULL && cur_page_entry->mapid == mapping)
@@ -630,9 +628,9 @@ munmap(mapid_t mapping)
     cur_page_entry = page_fetch(thread_current(), cur_addr);
   }
 
-  // get the fd_elem for the fd that corresponded to our mmap call we're unmapping.
-  // if we see that our number of mappings is equal to 0, or that the "close" call
-  // was used on this fd, we close it right away.
+  /* get the fd_elem for the fd that corresponded to our mmap call we're unmapping.
+  if we see that our number of mappings is equal to 0, or that the "close" call
+  was used on this fd, we close it right away. */
   struct list_elem *fd_list_elem = list_find_fd_elem(thread_current(), m->fd);
   struct fd_elem *found_fd_elem = list_entry(fd_list_elem, struct fd_elem, elem);
   found_fd_elem->num_mappings--;

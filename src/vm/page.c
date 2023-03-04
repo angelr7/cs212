@@ -9,6 +9,7 @@
 #include "threads/palloc.h"
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
+#include "userprog/syscall.h"
 
 void page_create_zero_entry(void *uaddr, struct frame_entry *frame, bool writable, bool loaded);
 void page_create_file_entry(void *uaddr, struct frame_entry *frame, struct file *file, off_t file_ofs,
@@ -145,8 +146,14 @@ void page_free(struct page *page_entry, bool delete_entry)
 {
     if (page_entry->physical_addr != NULL)
     {
-        if (page_entry->mapid != NO_MAPID && pagedir_is_dirty(thread_current()->pagedir, page_entry->virtual_addr))
-            file_write_at(page_entry->file, page_entry->virtual_addr, page_entry->page_read_bytes, page_entry->file_ofs);
+        if (page_entry->mapid != NO_MAPID 
+            && pagedir_is_dirty(thread_current()->pagedir, page_entry->virtual_addr))
+        {
+            lock_acquire(&filesys_lock);
+            file_write_at(page_entry->file, page_entry->virtual_addr,
+                          page_entry->page_read_bytes, page_entry->file_ofs);
+            lock_release(&filesys_lock);
+        }
         pagedir_clear_page(thread_current()->pagedir, page_entry->virtual_addr);
         free_frame(page_entry->physical_addr);
     }

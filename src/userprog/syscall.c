@@ -386,7 +386,6 @@ open(const char *file, struct intr_frame *f)
   lock_release(&filesys_lock);
   if (opened_file == NULL)
   {
-    printf("OPEN FAILED\n");
     f->eax = -1;
     return;
   }

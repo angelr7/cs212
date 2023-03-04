@@ -10,9 +10,9 @@
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
 
-// void page_create_zero_entry(void *uaddr, struct frame_entry *frame, bool writable, bool loaded);
-// void page_create_file_entry(void *uaddr, struct frame_entry *kpage, struct file *file, off_t file_ofs,
-//                             size_t read_bytes, size_t zero_bytes, bool writable, mapid_t mapid);
+void page_create_zero_entry(void *uaddr, struct frame_entry *frame, bool writable, bool loaded);
+void page_create_file_entry(void *uaddr, struct frame_entry *frame, struct file *file, off_t file_ofs,
+                            size_t read_bytes, size_t zero_bytes, bool writable, mapid_t mapid);
 struct page *page_fetch(struct thread *t, void *uaddr);
 
 /* Returns a hash value for page p. */
@@ -67,9 +67,8 @@ bool load_page(void *fault_addr)
     }
 
     struct frame_entry *frame = get_frame(upage, PAL_USER);
-    p->frame = frame;
-
-    if (frame->physical_address == NULL)
+    uint8_t *kpage = frame->physical_address;
+    if (kpage == NULL)
         return false;
     if (p->memory_flag == IN_DISK || p->memory_flag == ALL_ZEROES)
     {
@@ -92,6 +91,7 @@ bool load_page(void *fault_addr)
     }
     p->physical_addr = frame->physical_address;
     p->memory_flag = IN_MEM;
+    p->frame = frame;
     return true;
 }
 
@@ -100,7 +100,8 @@ void page_create_zero_entry(void *uaddr, struct frame_entry *frame, bool writabl
     struct page *page = malloc(sizeof(struct page));
     page->frame = frame;
     page->virtual_addr = uaddr;
-    page->physical_addr = frame == NULL ? NULL : frame->physical_address;
+    page->frame = frame;
+    page->physical_addr = (frame == NULL) ? NULL : frame->physical_address;
     page->process_reference = thread_current();
     page->loaded = loaded;
     page->memory_flag = ALL_ZEROES;
@@ -119,7 +120,8 @@ void page_create_file_entry(void *uaddr, struct frame_entry *frame, struct file 
     struct page *page = malloc(sizeof(struct page));
     page->frame = frame;
     page->virtual_addr = uaddr;
-    page->physical_addr = frame == NULL ? NULL : frame->physical_address;
+    page->frame = frame;
+    page->physical_addr = (frame == NULL) ? NULL : frame->physical_address;
     page->process_reference = thread_current();
     page->memory_flag = IN_DISK;
     page->file = file;

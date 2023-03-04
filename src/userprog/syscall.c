@@ -14,6 +14,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "vm/page.h"
+#include "vm/frame.h"
 
 typedef int pid_t;
 typedef int mapid_t;
@@ -36,13 +37,13 @@ static void tell(int fd, struct intr_frame *f);
 static void close(int fd);
 static void mmap(int fd, void *addr, struct intr_frame *f);
 static void munmap(mapid_t mapping);
-static void unpin(void *virtual_address);
+static void unpin(void *pointer, int size);
+
 
 struct fd_elem
 {
   int fd;
   int num_mappings;
-  // TODO: implement logic for treating alive fd elems that should be closed
   bool close_called;
   struct file *file;
   struct list_elem elem;
@@ -74,6 +75,7 @@ syscall_handler(struct intr_frame *f)
 {
   verify_pointer(f->esp, sizeof(uint32_t));
   uint32_t syscall_num = *(uint32_t *)f->esp;
+  unpin(f->esp, sizeof(uint32_t));
   uint32_t arg1 = 0;
   uint32_t arg2 = 0;
   uint32_t arg3 = 0;
@@ -83,19 +85,19 @@ syscall_handler(struct intr_frame *f)
   {
     verify_pointer(f->esp + 4, sizeof(uint32_t));
     arg1 = *(uint32_t *)(f->esp + 4);
-    unpin(f->esp + 4);
+    unpin(f->esp + 4, sizeof(uint32_t));
   }
   if (syscall_num == SYS_CREATE || syscall_num == SYS_READ || syscall_num == SYS_WRITE || syscall_num == SYS_SEEK || syscall_num == SYS_MMAP)
   {
     verify_pointer(f->esp + 8, sizeof(uint32_t));
     arg2 = *(uint32_t *)(f->esp + 8);
-    unpin(f->esp + 8);
+    unpin(f->esp + 8, sizeof(uint32_t));
   }
   if (syscall_num == SYS_READ || syscall_num == SYS_WRITE)
   {
-    verify_pointer(f->esp + 8, sizeof(uint32_t));
+    verify_pointer(f->esp + 12, sizeof(uint32_t));
     arg3 = *(uint32_t *)(f->esp + 12);
-    unpin(f->esp + 12);
+    unpin(f->esp + 12, sizeof(uint32_t));
   }
 
   // call syscall function
@@ -109,33 +111,33 @@ syscall_handler(struct intr_frame *f)
     break;
   case SYS_EXEC:
     exec((const char *)arg1, f);
-    unpin(arg1);
+    unpin((void *)arg1, strlen((const char *)arg1));
     break;
   case SYS_WAIT:
     wait((pid_t)arg1, f);
     break;
   case SYS_CREATE:
     create((const char *)arg1, (unsigned int)arg2, f);
-    unpin(arg1);
+    unpin((void *)arg1, strlen((const char *)arg1));
     break;
   case SYS_REMOVE:
     remove((const char *)arg1, f);
-    unpin(arg1);
+    unpin((void *)arg1, strlen((const char *)arg1));
     break;
   case SYS_OPEN:
     open((const char *)arg1, f);
-    unpin(arg1);
+    unpin((void *)arg1, strlen((const char *)arg1));
     break;
   case SYS_FILESIZE:
     filesize((int)arg1, f);
     break;
   case SYS_READ:
     read((int)arg1, (void *)arg2, (unsigned int)arg3, f);
-    unpin(arg2);
+    unpin((void *)arg2, (unsigned int)arg3);
     break;
   case SYS_WRITE:
     write((int)arg1, (const void *)arg2, (unsigned int)arg3, f);
-    unpin(arg2);
+    unpin((void *)arg2, (unsigned int)arg3);
     break;
   case SYS_SEEK:
     seek((int)arg1, (unsigned int)arg2);
@@ -203,28 +205,38 @@ verify_pointer(const void *pointer, int size)
   }
   if (is_user_vaddr(pointer))
   {
-    uint32_t *pd = thread_current()->pagedir;
-    struct page p1;
-    p1.virtual_addr = pg_round_down(pointer);
-    struct page p2;
-    p2.virtual_addr = pg_round_down(last_byte);
-    bool pd1 = pagedir_get_page(pd, pointer) == NULL;
-    bool spt1 = hash_find(&thread_current()->spt, &p1.hash_elem) == NULL;
-    bool pd2 = pagedir_get_page(pd, last_byte) == NULL;
-    bool spt2 = hash_find(&thread_current()->spt, &p2.hash_elem) == NULL;
-    if ((pd1 && spt1) || (pd2 && spt2))
+    struct thread *t = thread_current();
+    uint32_t *pd = t->pagedir;
+    void *first_page = pg_round_down(pointer);
+    void *last_page = pg_round_down(last_byte);
+
+    /* Check that all bytes are mapped */
+    void *cur_page = first_page;
+    while (cur_page <= last_page)
     {
-      exit_handler(-1);
+      struct page p;
+      p.virtual_addr = cur_page;
+      if (pagedir_get_page(pd, cur_page) == NULL && hash_find(&t->spt, &p.hash_elem) == NULL)
+      {
+        exit_handler(-1);
+      }
+      cur_page += PGSIZE;
     }
 
-    if (!pd1 && spt1)
+    /* Pin every page */
+    cur_page = first_page;
+    while (cur_page <= last_page)
     {
-      if (load_page(p1.virtual_addr))
-        exit_handler(-1);
-
-      lock_acquire(&p1.frame->lock);
-      p1.frame->pinned = true;
-      lock_release(&p1.frame->lock);
+      struct page *p = page_fetch(t, cur_page);
+      if (p->physical_addr == NULL)
+      {
+        if (!load_page(cur_page))
+          exit_handler(-1);
+      }
+      lock_acquire(&p->frame->lock);
+      p->frame->pinned = true;
+      lock_release(&p->frame->lock);
+      cur_page += PGSIZE;
     }
   }
   else
@@ -248,6 +260,27 @@ verify_writable(const void *pointer, int size)
   struct page *p = page_fetch(thread_current(), cur);
   if (p != NULL && !p->writable)
     exit_handler(-1);
+}
+
+static void
+unpin(void *pointer, int size)
+{
+  void *last_byte = (void *)((char *)pointer + (size - 1));
+  struct thread *t = thread_current();
+  uint32_t *pd = t->pagedir;
+  void *first_page = pg_round_down(pointer);
+  void *last_page = pg_round_down(last_byte);
+
+  /* Check that all bytes are mapped */
+  void *cur_page = first_page;
+  while (cur_page <= last_page)
+  {
+    struct page *p = page_fetch(t, cur_page);
+    lock_acquire(&p->frame->lock);
+    p->frame->pinned = false;
+    lock_release(&p->frame->lock);
+    cur_page += PGSIZE;
+  }
 }
 
 /*Halt program*/
@@ -362,6 +395,7 @@ open(const char *file, struct intr_frame *f)
   lock_release(&filesys_lock);
   if (opened_file == NULL)
   {
+    printf("OPEN FAILED\n");
     f->eax = -1;
     return;
   }

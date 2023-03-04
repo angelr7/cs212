@@ -20,6 +20,7 @@ typedef int mapid_t;
 struct page {
     struct frame_entry *frame;
     void *virtual_addr;
+    struct frame_entry *frame;
     void *physical_addr;
     struct hash_elem hash_elem;
     struct thread *process_reference;

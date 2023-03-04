@@ -62,7 +62,7 @@ void syscall_init(void)
   intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
-static void unpin(void *virtual_address)
+static void unpin(void *pointer, int size)
 {
   struct page *p = page_fetch(thread_current(), virtual_address);
   lock_acquire(&p->frame->lock);

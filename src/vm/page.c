@@ -50,33 +50,46 @@ bool load_page(void *fault_addr)
         if (fault_addr <= thread_current()->esp && 
         fault_addr >= thread_current()->esp - 32)
         {
+            page_create_zero_entry(upage, NULL, true, true);
+            struct page *added_page = page_fetch(thread_current(), upage);
+            lock_acquire(&added_page->page_lock);
+
             struct frame_entry *frame = get_frame(upage, PAL_USER);
             uint8_t *kpage = frame->physical_address;
-            if (kpage == NULL)
+            if (kpage == NULL) {
+                lock_release(&added_page->page_lock);
+                page_free(added_page, true);
                 return false;
+            }
             memset(kpage, 0, PGSIZE);
 
             if (!install_page(upage, kpage, true))
             {
+                lock_release(&added_page->page_lock);
+                page_free(added_page, true);
                 free_frame(kpage);
                 return false;
             }
 
-            page_create_zero_entry(upage, frame, true, true);
+            lock_release(&added_page->page_lock);
+
             return true;
         }
         return false;
     }
 
+    lock_acquire(&p->page_lock);
     struct frame_entry *frame = get_frame(upage, PAL_USER);
     uint8_t *kpage = frame->physical_address;
     if (kpage == NULL)
+        lock_release(&p->page_lock);
         return false;
     if (p->memory_flag == IN_DISK || p->memory_flag == ALL_ZEROES)
     {
         if (file_read_at(p->file, kpage, p->page_read_bytes, p->file_ofs) 
             != (int)p->page_read_bytes)
         {
+            lock_release(&p->page_lock);
             free_frame(kpage);
             return false;
         }
@@ -89,12 +102,14 @@ bool load_page(void *fault_addr)
     }
     if (!install_page(upage, kpage, p->writable))
     {
+        lock_release(&p->page_lock);
         free_frame(kpage);
         return false;
     }
     p->physical_addr = kpage;
     p->memory_flag = IN_MEM;
     p->frame = frame;
+    lock_release(&p->page_lock);
     return true;
 }
 
@@ -103,6 +118,7 @@ void page_create_zero_entry(
     void *uaddr, struct frame_entry *frame, bool writable, bool loaded)
 {
     struct page *page = malloc(sizeof(struct page));
+    lock_init(&page->page_lock);
     page->virtual_addr = uaddr;
     page->frame = frame;
     page->physical_addr = (frame == NULL) ? NULL : frame->physical_address;
@@ -123,6 +139,7 @@ void page_create_file_entry(
     bool writable, mapid_t mapid)
 {
     struct page *page = malloc(sizeof(struct page));
+    lock_init(&page->page_lock);
     page->virtual_addr = uaddr;
     page->frame = frame;
     page->physical_addr = (frame == NULL) ? NULL : frame->physical_address;

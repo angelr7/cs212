@@ -39,6 +39,8 @@ struct page {
     struct thread *process_reference;
     short memory_flag;    
     bool writable;
+
+    struct lock page_lock;
 };
 
 void init_supplemental_table(struct hash*);

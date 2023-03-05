@@ -78,6 +78,7 @@ static size_t evict_algo(void)
     }
 
     struct page *p = page_fetch(f->process_thread, f->virtual_address);
+    lock_acquire(&p->page_lock);
     pagedir_clear_page(f->process_thread->pagedir, p->virtual_addr);
     
     /* Evicting read-only page from executable */
@@ -100,6 +101,7 @@ static size_t evict_algo(void)
         p->memory_flag = IN_DISK;
     }
     p->physical_addr = NULL;
+    lock_release(&p->page_lock);
     return evict_idx;
 }
 

@@ -29,14 +29,73 @@ Fabian Luna <luna1206@stanford.edu>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+/* This is our supplemental page struct, it keeps
+track of all information needed to retrieve a page
+of information in swap or file and write it to memory. */
+struct page {
+    /* In Memory */
+    struct frame_entry *frame;
+    void *physical_addr;
+
+    /* In Disk */
+    struct file *file;
+    off_t file_ofs;
+    size_t page_read_bytes;
+    size_t page_zero_bytes;
+    mapid_t mapid;
+
+    /* In Swap*/
+    int swap_slot;
+
+    /* Everything */
+    void *virtual_addr;
+    struct hash_elem hash_elem;
+    struct thread *process_reference;
+    short memory_flag;    
+    bool writable;
+};
+
+/* This member was added into the thread struct so that each process can manage its own SPT. */
+struct hash spt;
+
 ---- ALGORITHMS ----
 
 >> A2: In a few paragraphs, describe your code for accessing the data
 >> stored in the SPT about a given page.
+Our SPT is in the form of a hash table, and each one of its items is represented by our 
+page struct. For this reason, all of our page logic with the SPT uses functions like 
+hash_insert and hash_find to access and interact with the stored page data. In our 
+implementation, we only use two functions to access the data stored about a given page: 
+page_fetch and load_page. These functions fetch the page data from the SPT and load the page
+into the memory, respectively.
+
+page_fetch is a rather simple function, and simply grabs the page reference from a given 
+thread's SPT. We first begin by rounding down a user address to find the page entry that
+corresponds to that address. We then declare a struct page variable, but only fill in the
+virtual address for that page, so that we can pass it into the hash_find function. This 
+function finds the hash_elem with the corresponding user address if it exists, and returns 
+NULL if it doesn't. We then use the hash_entry call in order to convert the hash_elem that 
+into a struct page and return it.
+
+load_page first tries to find a page entry in the SPT for a given fault_addr. If the 
+fault_addr returns NULL, we check to see if our stack is trying to grow itself; if not,
+we return false, because there's no page to load from the SPT. If we do have an address,
+however, we fetch the frame for that given user page; if the page has not yet had a 
+physical_address assigned to it, we return false. In the event that there is a frame 
+for that address, we then fetch that data, whether it is zeroed, on swap, etc, and set
+that information in the page, along with its memory flag to indicate it's in memory. If 
+there is any errors that we encounter after we've fetched the frame, we make sure to free
+the frame before returning false.
 
 >> A3: How does your code coordinate accessed and dirty bits between
 >> kernel and user virtual addresses that alias a single frame, or
 >> alternatively how do you avoid the issue?
+To avoid any extra configuration with our codebase, we chose to exclusively access data 
+through user virtual addresses. By avoiding any use of the actual physical address that
+a given virtual page is mapped to, we completely avoid dealing with data inconsistencies
+that may arise from holding that underlying kernel page. We have also not implemented
+file sharing at any point in time, so there are no other aliasing situations that can
+arise in our ecosystem.
 
 Only access through user ?
 
@@ -44,13 +103,25 @@ Only access through user ?
 
 >> A4: When two user processes both need a new frame at the same time,
 >> how are races avoided?
-
-?
+When we call get_frame, we get the new frame by accessing and modifying a bitmap with the
+bitmap_scan_and_flip call. In order to avoid races in this scenario, we have a bitmap_lock 
+that is a static global that we define in page.c. This lock is initialized in the 
+frame_table_init call, so we know that all threads will be able to access and use this lock
+as required. We use this lock when modifying the bitmap during a get_frame or free_frame
+call so that there are no read/write inconsistencies that may arise from races when 
+freeing/getting frames.
 
 ---- RATIONALE ----
 
 >> A5: Why did you choose the data structure(s) that you did for
 >> representing virtual-to-physical mappings?
+We used our page struct to represent our virtual-to-physical mappings. In this struct, the 
+virtual_addr, hash_elem, process_reference, memory_flag, and writeable boolean are always 
+used. This allows us to manage the page and retrive information about it no matter where
+the kernel page for that user address is. In the event that the kernel page is in memory, 
+swap, or on disk, we can simply check our memory_flag and do certain actions with or on that
+page. Once checking this flag, we can then go on to use certain member variables that apply
+and can be used in each corresponding situation.
 
                PAGING TO AND FROM DISK
                =======================

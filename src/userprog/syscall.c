@@ -21,7 +21,7 @@ typedef int mapid_t;
 
 static void syscall_handler(struct intr_frame *);
 static void verify_pointer(const void *pointer, int size);
-static void verify_writable(const void *pointer, int size);
+static void verify_writable(void *pointer, int size);
 static void halt(void) NO_RETURN;
 void exit_handler(int status);
 static void exec(const char *file, struct intr_frame *f);
@@ -150,8 +150,8 @@ syscall_handler(struct intr_frame *f)
   }
 }
 
-/*Search through fd list and return fd_elem with corresponding fd */
-static struct list_elem *
+/* Search through fd list and return fd_elem with corresponding fd */
+static struct fd_elem *
 list_find_fd_elem(struct thread *t, int fd)
 {
   struct list_elem *e;
@@ -162,13 +162,13 @@ list_find_fd_elem(struct thread *t, int fd)
   {
     struct fd_elem *f = list_entry(e, struct fd_elem, elem);
     if (f->fd == fd)
-      return e;
+      return f;
   }
 
   return NULL;
 }
 
-/*Search through mapid list and return mapid_elem with corresponding mapid */
+/* Search through mapid list and return mapid_elem with corresponding mapid */
 static struct mapid_elem *
 list_find_mapid_elem(struct thread *t, mapid_t mapid)
 {
@@ -243,19 +243,28 @@ verify_pointer(const void *pointer, int size)
 static void
 verify_string(const char *string)
 {
-  char *cur = string;
+  const char *cur = string;
   verify_pointer(cur, sizeof(char));
   while (*cur != '\0')
     verify_pointer(++cur, sizeof(char));
 }
 
 static void
-verify_writable(const void *pointer, int size)
+verify_writable(void *pointer, int size)
 {
-  void *cur = pointer;
-  struct page *p = page_fetch(thread_current(), cur);
-  if (p != NULL && !p->writable)
-    exit_handler(-1);
+  void *last_byte = (void *)((char *)pointer + (size - 1));
+  void *first_page = pg_round_down(pointer);
+  void *last_page = pg_round_down(last_byte);
+
+  /* Check that all bytes are mapped and writable */
+  void *cur_page = first_page;
+  while (cur_page <= last_page)
+  {
+    struct page *p = page_fetch(thread_current(), cur_page);
+    if (p == NULL || !p->writable)
+      exit_handler(-1);
+    cur_page += PGSIZE;
+  }
 }
 
 static void
@@ -263,7 +272,6 @@ unpin(void *pointer, int size)
 {
   void *last_byte = (void *)((char *)pointer + (size - 1));
   struct thread *t = thread_current();
-  uint32_t *pd = t->pagedir;
   void *first_page = pg_round_down(pointer);
   void *last_page = pg_round_down(last_byte);
 
@@ -410,15 +418,14 @@ open(const char *file, struct intr_frame *f)
 static void
 filesize(int fd, struct intr_frame *f)
 {
-  struct list_elem *fd_list_elem = list_find_fd_elem(thread_current(), fd);
-  if (fd_list_elem == NULL)
+  struct fd_elem *fd_elem = list_find_fd_elem(thread_current(), fd);
+  if (fd_elem == NULL)
   {
     f->eax = -1;
     return;
   }
-  struct fd_elem *found_fd_elem = list_entry(fd_list_elem, struct fd_elem, elem);
   lock_acquire(&filesys_lock);
-  int size = file_length(found_fd_elem->file);
+  int size = file_length(fd_elem->file);
   lock_release(&filesys_lock);
   f->eax = size;
 }
@@ -437,15 +444,14 @@ read(int fd, void *buffer, unsigned length, struct intr_frame *f)
     return;
   }
 
-  struct list_elem *fd_list_elem = list_find_fd_elem(thread_current(), fd);
-  if (fd_list_elem == NULL)
+  struct fd_elem *fd_elem = list_find_fd_elem(thread_current(), fd);
+  if (fd_elem == NULL)
   {
     f->eax = -1;
     return;
   }
-  struct fd_elem *found_fd_elem = list_entry(fd_list_elem, struct fd_elem, elem);
   lock_acquire(&filesys_lock);
-  int bytes_read = file_read(found_fd_elem->file, buffer, length);
+  int bytes_read = file_read(fd_elem->file, buffer, length);
   lock_release(&filesys_lock);
   f->eax = bytes_read;
   return;
@@ -464,15 +470,14 @@ write(int fd, const void *buffer, unsigned int length, struct intr_frame *f)
     return;
   }
 
-  struct list_elem *fd_list_elem = list_find_fd_elem(thread_current(), fd);
-  if (fd_list_elem == NULL)
+  struct fd_elem *fd_elem = list_find_fd_elem(thread_current(), fd);
+  if (fd_elem == NULL)
   {
     f->eax = -1;
     return;
   }
-  struct fd_elem *found_fd_elem = list_entry(fd_list_elem, struct fd_elem, elem);
   lock_acquire(&filesys_lock);
-  int bytes_written = file_write(found_fd_elem->file, buffer, length);
+  int bytes_written = file_write(fd_elem->file, buffer, length);
   lock_release(&filesys_lock);
   f->eax = bytes_written;
 }
@@ -481,14 +486,13 @@ write(int fd, const void *buffer, unsigned int length, struct intr_frame *f)
 static void
 seek(int fd, unsigned position)
 {
-  struct list_elem *fd_list_elem = list_find_fd_elem(thread_current(), fd);
-  if (fd_list_elem == NULL)
+  struct fd_elem *fd_elem = list_find_fd_elem(thread_current(), fd);
+  if (fd_elem == NULL)
   {
     return;
   }
-  struct fd_elem *found_fd_elem = list_entry(fd_list_elem, struct fd_elem, elem);
   lock_acquire(&filesys_lock);
-  file_seek(found_fd_elem->file, position);
+  file_seek(fd_elem->file, position);
   lock_release(&filesys_lock);
 }
 
@@ -496,39 +500,38 @@ seek(int fd, unsigned position)
 static void
 tell(int fd, struct intr_frame *f)
 {
-  struct list_elem *fd_list_elem = list_find_fd_elem(thread_current(), fd);
-  if (fd_list_elem == NULL)
+  struct fd_elem *fd_elem = list_find_fd_elem(thread_current(), fd);
+  if (fd_elem == NULL)
   {
     f->eax = -1;
     return;
   }
-  struct fd_elem *found_fd_elem = list_entry(fd_list_elem, struct fd_elem, elem);
   lock_acquire(&filesys_lock);
-  int position = file_tell(found_fd_elem->file);
+  int position = file_tell(fd_elem->file);
   lock_release(&filesys_lock);
   f->eax = position;
 }
+
 /*Close file*/
 static void
 close(int fd)
 {
-  struct list_elem *fd_list_elem = list_find_fd_elem(thread_current(), fd);
-  if (fd_list_elem == NULL)
+  struct fd_elem *fd_elem = list_find_fd_elem(thread_current(), fd);
+  if (fd_elem == NULL)
   {
     return;
   }
-  struct fd_elem *found_fd_elem = list_entry(fd_list_elem, struct fd_elem, elem);
-  found_fd_elem->close_called = true;
-  if (found_fd_elem->num_mappings > 0)
+  fd_elem->close_called = true;
+  if (fd_elem->num_mappings > 0)
     return;
   lock_acquire(&filesys_lock);
-  file_close(found_fd_elem->file);
+  file_close(fd_elem->file);
   lock_release(&filesys_lock);
-  list_remove(fd_list_elem);
-  free(found_fd_elem);
+  list_remove(&fd_elem->elem);
+  free(fd_elem);
 }
 
-/* mmap at a given addr*/
+/* Mmaps a file at a given address if valid */
 static void
 mmap(int fd, void *addr, struct intr_frame *f)
 {
@@ -544,16 +547,15 @@ mmap(int fd, void *addr, struct intr_frame *f)
   }
 
   /* find the list_elem that corresponds to fd */ 
-  struct list_elem *fd_list_elem = list_find_fd_elem(thread_current(), fd);
-  if (fd_list_elem == NULL)
+  struct fd_elem *fd_elem = list_find_fd_elem(thread_current(), fd);
+  if (fd_elem == NULL)
   {
     f->eax = -1;
     return;
   }
 
-  struct fd_elem *found_fd_elem = list_entry(fd_list_elem, struct fd_elem, elem);
   lock_acquire(&filesys_lock);
-  int size = file_length(found_fd_elem->file);
+  int size = file_length(fd_elem->file);
   lock_release(&filesys_lock);
 
   /* if the size of the file is 0, fail */ 
@@ -564,13 +566,13 @@ mmap(int fd, void *addr, struct intr_frame *f)
   }
 
   /* Make sure that following pages don't overlap with virtual pages that are already used */
-  uint32_t currPtr = (char *)addr + size;
-  while (currPtr % PGSIZE != 0)
+  void *currPtr = (char *)addr + size;
+  while ((uint32_t)currPtr % PGSIZE != 0)
     currPtr++;
 
   /* Check if we've allocated any of the necessary pages for addr in the spt.
   if that's the case, we have overlap, and this pointer isn't valid*/
-  int totPages = (currPtr - (uint32_t)addr) / PGSIZE;
+  int totPages = ((uint32_t)currPtr - (uint32_t)addr) / PGSIZE;
   for (int pageNum = 0; pageNum < totPages; pageNum++)
   {
     void *currPage = addr + pageNum * PGSIZE;
@@ -590,7 +592,7 @@ mmap(int fd, void *addr, struct intr_frame *f)
     size_t page_read_bytes = size < PGSIZE ? size : PGSIZE;
     size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-    page_create_file_entry(cur_addr, NULL, found_fd_elem->file, 
+    page_create_file_entry(cur_addr, NULL, fd_elem->file, 
     file_ofs, page_read_bytes, page_zero_bytes, true, mapid);
 
     size -= PGSIZE;
@@ -598,28 +600,28 @@ mmap(int fd, void *addr, struct intr_frame *f)
     cur_addr += PGSIZE;
   }
 
-  struct mapid_elem *m = malloc(sizeof(struct mapid_elem));
-  m->mapid = mapid;
-  m->fd = fd;
-  m->start_addr = addr;
-  list_push_back(&thread_current()->mapid_list, &m->elem);
-  found_fd_elem->num_mappings++;
+  struct mapid_elem *mapping = malloc(sizeof(struct mapid_elem));
+  mapping->mapid = mapid;
+  mapping->fd = fd;
+  mapping->start_addr = addr;
+  list_push_back(&thread_current()->mapid_list, &mapping->elem);
+  fd_elem->num_mappings++;
   f->eax = mapid;
 }
 
-/* unmap all data associated with the given mapid*/
+/* Unmap all data associated with the given mapid's mapping */
 static void
 munmap(mapid_t mapping)
 {
-  struct mapid_elem *m = list_find_mapid_elem(thread_current(), mapping);
-  if (m == NULL)
+  struct mapid_elem *mapid_elem = list_find_mapid_elem(thread_current(), mapping);
+  if (mapid_elem == NULL)
     return;
  
-  /* this goes through all of the pages that belong to this mapping, and it 
-  frees them all, one by one. it will continue until a fetched page equals
+  /* This goes through all of the pages that belong to this mapping, and it 
+  frees them all, one by one. It will continue until a fetched page equals
   NULL, or until it runs into another page that doesn't correspond to this
   mapid. */
-  void *cur_addr = m->start_addr;
+  void *cur_addr = mapid_elem->start_addr;
   struct page *cur_page_entry = page_fetch(thread_current(), cur_addr);
   while (cur_page_entry != NULL && cur_page_entry->mapid == mapping)
   {
@@ -631,12 +633,11 @@ munmap(mapid_t mapping)
   /* get the fd_elem for the fd that corresponded to our mmap call we're unmapping.
   if we see that our number of mappings is equal to 0, or that the "close" call
   was used on this fd, we close it right away. */
-  struct list_elem *fd_list_elem = list_find_fd_elem(thread_current(), m->fd);
-  struct fd_elem *found_fd_elem = list_entry(fd_list_elem, struct fd_elem, elem);
-  found_fd_elem->num_mappings--;
-  if (found_fd_elem->num_mappings == 0 && found_fd_elem->close_called)
-    close(found_fd_elem->fd);
+  struct fd_elem *fd_elem = list_find_fd_elem(thread_current(), mapid_elem->fd);
+  fd_elem->num_mappings--;
+  if (fd_elem->num_mappings == 0 && fd_elem->close_called)
+    close(fd_elem->fd);
 
-  list_remove(&m->elem);
-  free(m);
+  list_remove(&mapid_elem->elem);
+  free(mapid_elem);
 }

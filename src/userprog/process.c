@@ -25,7 +25,7 @@
 #include "vm/page.h"
 
 
-#define CMDLINE_CHAR_LIMIT 128
+#define CMDLINE_CHAR_LIMIT 4096
 
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, void (**eip)(void), void **esp);

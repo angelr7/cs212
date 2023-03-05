@@ -55,7 +55,7 @@ bool load_page(void *fault_addr)
             lock_acquire(&added_page->page_lock);
 
             struct frame_entry *frame = get_frame(upage, PAL_USER);
-            uint8_t *kpage = frame->physical_address;
+            uint8_t *kpage = frame->physload_pageical_address;
             if (kpage == NULL) {
                 lock_release(&added_page->page_lock);
                 page_free(added_page, true);

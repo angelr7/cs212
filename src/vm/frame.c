@@ -57,10 +57,9 @@ static size_t evict_algo(void)
     lock_acquire(&f->lock);
     bool accessed_page = pagedir_is_accessed(f->process_thread->pagedir, 
         f->virtual_address);
-    /* if it is pinned  or accessed and it has virtual address or if frame has not been given data*/
-    while(((accessed_page || f->pinned) && f->virtual_address != NULL) || f->physical_address == NULL)
+    while((accessed_page || f->pinned) && f->virtual_address != NULL)
     {
-        if (f->physical_address != NULL && accessed_page)
+        if (accessed_page)
             pagedir_set_accessed(f->process_thread->pagedir, 
                 f->virtual_address, false);
         lock_release(&f->lock);
@@ -119,6 +118,7 @@ struct frame_entry *get_frame(void *uaddr, enum palloc_flags flags)
     lock_acquire(&frame->lock);
     frame->process_thread = thread_current();
     frame->virtual_address = uaddr;
+    frame->pinned = true; 
     /* So that it is not immediatly evicted*/
     pagedir_set_accessed(frame->process_thread->pagedir, 
                 frame->virtual_address, true);    

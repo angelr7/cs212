@@ -53,16 +53,26 @@ bool load_page(void *fault_addr)
             struct frame_entry *frame = get_frame(upage, PAL_USER);
             uint8_t *kpage = frame->physical_address;
             if (kpage == NULL)
+            {
+                lock_acquire(&frame->lock);
+                frame->pinned = false;
+                lock_release(&frame->lock);
                 return false;
+            }
             memset(kpage, 0, PGSIZE);
-
             if (!install_page(upage, kpage, true))
             {
+                lock_acquire(&frame->lock);
+                frame->pinned = false;
+                lock_release(&frame->lock);
                 free_frame(kpage);
                 return false;
             }
 
             page_create_zero_entry(upage, frame, true, true);
+            lock_acquire(&frame->lock);
+            frame->pinned = false;
+            lock_release(&frame->lock);
             return true;
         }
         return false;
@@ -71,12 +81,20 @@ bool load_page(void *fault_addr)
     struct frame_entry *frame = get_frame(upage, PAL_USER);
     uint8_t *kpage = frame->physical_address;
     if (kpage == NULL)
+    {
+        lock_acquire(&frame->lock);
+        frame->pinned = false;
+        lock_release(&frame->lock);
         return false;
+    }
     if (p->memory_flag == IN_DISK || p->memory_flag == ALL_ZEROES)
     {
         if (file_read_at(p->file, kpage, p->page_read_bytes, p->file_ofs) 
             != (int)p->page_read_bytes)
         {
+            lock_acquire(&frame->lock);
+            frame->pinned = false;
+            lock_release(&frame->lock);
             free_frame(kpage);
             return false;
         }
@@ -89,12 +107,18 @@ bool load_page(void *fault_addr)
     }
     if (!install_page(upage, kpage, p->writable))
     {
+        lock_acquire(&frame->lock);
+        frame->pinned = false;
+        lock_release(&frame->lock);
         free_frame(kpage);
         return false;
     }
     p->physical_addr = kpage;
     p->memory_flag = IN_MEM;
     p->frame = frame;
+    lock_acquire(&frame->lock);
+    frame->pinned = false;
+    lock_release(&frame->lock);
     return true;
 }
 

@@ -221,7 +221,8 @@ algorithm completes.
 >> cannot interfere by e.g. attempting to evict the frame while it is
 >> still being read in?
 
-
+pin every frame when created and unpin when finished creating so can not be
+evicted. 
 
 >> B8: Explain how you handle access to paged-out pages that occur
 >> during system calls.  Do you use page faults to bring in pages (as
@@ -234,7 +235,8 @@ pins all the pages being accessed by that pointer. This in essence sets the
 frame pinned boolean to true for these frames. This ensures that any eviction
 will skip over any pinned pages so that we do not page fault in the kernel.
 
-Expand on checking here
+This ensures that if in this situation if we are working with an invalid
+virtual address we first must check if it is in the suppl
 We gracefully handle attempted accesses to invalid virtual addresses by
 calling our exit_handler(-1). We do this by checking the pagedirectory
 and the supplemental page table to ensure that every page is a valid

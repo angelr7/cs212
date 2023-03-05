@@ -39,7 +39,17 @@ void init_supplemental_table(struct hash *supplemental_table)
     hash_init(supplemental_table, page_hash, page_less, NULL);
 }
 
-/* Load a page into physical memory at the given virtual fault_addr */
+/* unpin a single page*/
+void unpin_page(struct frame_entry *frame)
+{
+    lock_acquire(&frame->lock);
+    frame->pinned = false;
+    lock_release(&frame->lock);
+}
+
+/* Load a page into physical memory at the given virtual fault_addr 
+using the supplemental page table entries. In the case of stack
+growth we create a new stack page*/
 bool load_page(void *fault_addr)
 {
     struct page *p = page_fetch(thread_current(), fault_addr);
@@ -54,25 +64,18 @@ bool load_page(void *fault_addr)
             uint8_t *kpage = frame->physical_address;
             if (kpage == NULL)
             {
-                lock_acquire(&frame->lock);
-                frame->pinned = false;
-                lock_release(&frame->lock);
+                unpin_page(frame);
                 return false;
             }
             memset(kpage, 0, PGSIZE);
             if (!install_page(upage, kpage, true))
             {
-                lock_acquire(&frame->lock);
-                frame->pinned = false;
-                lock_release(&frame->lock);
                 free_frame(kpage);
                 return false;
             }
 
             page_create_zero_entry(upage, frame, true, true);
-            lock_acquire(&frame->lock);
-            frame->pinned = false;
-            lock_release(&frame->lock);
+            unpin_page(frame);
             return true;
         }
         return false;
@@ -82,22 +85,20 @@ bool load_page(void *fault_addr)
     uint8_t *kpage = frame->physical_address;
     if (kpage == NULL)
     {
-        lock_acquire(&frame->lock);
-        frame->pinned = false;
-        lock_release(&frame->lock);
+        unpin_page(frame);
         return false;
     }
     if (p->memory_flag == IN_DISK || p->memory_flag == ALL_ZEROES)
     {
+        lock_acquire(&filesys_lock);
         if (file_read_at(p->file, kpage, p->page_read_bytes, p->file_ofs) 
             != (int)p->page_read_bytes)
         {
-            lock_acquire(&frame->lock);
-            frame->pinned = false;
-            lock_release(&frame->lock);
             free_frame(kpage);
+            lock_release(&filesys_lock);
             return false;
         }
+        lock_release(&filesys_lock);
         memset(kpage + p->page_read_bytes, 0, p->page_zero_bytes);
     }
     else if (p->memory_flag == IN_SWAP)
@@ -107,18 +108,13 @@ bool load_page(void *fault_addr)
     }
     if (!install_page(upage, kpage, p->writable))
     {
-        lock_acquire(&frame->lock);
-        frame->pinned = false;
-        lock_release(&frame->lock);
         free_frame(kpage);
         return false;
     }
     p->physical_addr = kpage;
     p->memory_flag = IN_MEM;
     p->frame = frame;
-    lock_acquire(&frame->lock);
-    frame->pinned = false;
-    lock_release(&frame->lock);
+    unpin_page(frame);
     return true;
 }
 

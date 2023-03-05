@@ -146,7 +146,6 @@ page_fault (struct intr_frame *f)
      be assured of reading CR2 before it changed). */
   intr_enable ();
 
-//   void *upage = pg_round_down(fault_addr);
   if (load_page(fault_addr))
    return;
   else

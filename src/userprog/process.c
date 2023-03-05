@@ -669,9 +669,7 @@ setup_stack(void **esp, const char *cmdline)
     }
     else
       free_frame(kpage);
-    lock_acquire(&frame->lock);
-    frame->pinned = false;
-    lock_release(&frame->lock);
+    unpin_page(frame);
   }
   return success;
 }

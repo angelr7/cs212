@@ -70,13 +70,14 @@ static size_t evict_algo(void)
         accessed_page = pagedir_is_accessed(f->process_thread->pagedir, 
             f->virtual_address);
     }
-    
     if (f->virtual_address == NULL)
     {
+
         bitmap_set(used_map,evict_idx,true);
         lock_release(&f->lock);
         return evict_idx;
     }
+    lock_release(&f->lock);
 
     struct page *p = page_fetch(f->process_thread, f->virtual_address);
     pagedir_clear_page(f->process_thread->pagedir, p->virtual_addr);
@@ -101,7 +102,6 @@ static size_t evict_algo(void)
         p->memory_flag = IN_DISK;
     }
     p->physical_addr = NULL;
-    lock_release(&f->lock);
     return evict_idx;
 }
 

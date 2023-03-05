@@ -5,11 +5,11 @@
 #include "threads/synch.h"
 #include <stdlib.h>
 
-static struct bitmap *used_map;
-static struct block *swap_block;
-static int num_slots;
-static size_t sectors_per_page;
-static struct lock swap_lock;
+static struct bitmap *used_map;         /* map of used swap slots */
+static struct block *swap_block;        /* entire block on disk that makes up swap */
+static int num_slots;                   /* number of slot in our swap */
+static size_t sectors_per_page;         /* number of sectors in a page */
+static struct lock swap_lock;           /* lock for swap */
 
 /* Initialize our swap block */
 void swap_init(void)
@@ -41,7 +41,7 @@ int swap_add(void *phys_addr)
 
 /* Remove data from swap and put into memory at location phys_addr*/
 void swap_remove(void *phys_addr, int swap_slot)
-{;
+{
     ASSERT(swap_slot >= 0 && swap_slot < num_slots);
     ASSERT(bitmap_test(used_map, swap_slot));
     lock_acquire(&swap_lock);

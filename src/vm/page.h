@@ -20,25 +20,27 @@ track of all information needed to retrieve a page
 of information in swap or file and write it to memory. */
 struct page {
     /* In Memory */
-    struct frame_entry *frame;
-    void *physical_addr;
+    struct frame_entry *frame;      /* the frame which goes to this page*/
+    void *physical_addr;            /* physical address of this page*/
 
     /* In Disk */
-    struct file *file;
-    off_t file_ofs;
-    size_t page_read_bytes;
-    size_t page_zero_bytes;
-    mapid_t mapid;
+    struct file *file;              /* file struct if page is in a file */
+    off_t file_ofs;                 /* file offset if page is in a file */
+    size_t page_read_bytes;         /* page read bytes if page is in a file */
+    size_t page_zero_bytes;         /* page zero bytes if page is in a file */
+
+    /* Mapped */
+    mapid_t mapid;                  /* mapid if mapped  */
 
     /* In Swap*/
-    int swap_slot;
+    int swap_slot;                  /* Slot in swap table if in swap*/
 
     /* Everything */
-    void *virtual_addr;
-    struct hash_elem hash_elem;
-    struct thread *process_reference;
-    short memory_flag;    
-    bool writable;
+    void *virtual_addr;             /* pages virtual address*/
+    struct hash_elem hash_elem;     /* pages hash elem*/
+    struct thread *process_reference;   /* pointer to process which created the page*/
+    short memory_flag;              /* memory flag to know where this page is*/
+    bool writable;                  /* boolean for if page is writeable */
 };
 
 void init_supplemental_table(struct hash*);
@@ -53,6 +55,7 @@ void page_create_file_entry(void *uaddr, struct frame_entry *frame, struct file 
                              bool writable, mapid_t mapid);
 struct page *page_fetch(struct thread *t, void *uaddr);
 void page_free(struct page *page_entry, bool delete_entry);
+void unpin_page(struct frame_entry *frame);
 
 void free_thread_pages(void);
 

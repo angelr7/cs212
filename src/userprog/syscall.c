@@ -249,6 +249,8 @@ verify_string(const char *string)
     verify_pointer(++cur, sizeof(char));
 }
 
+/* Takes in a pointer and makes sure that these pages
+are writeable */
 static void
 verify_writable(void *pointer, int size)
 {
@@ -267,6 +269,7 @@ verify_writable(void *pointer, int size)
   }
 }
 
+/* Unpins all of the pages passed through the pointer*/
 static void
 unpin(void *pointer, int size)
 {

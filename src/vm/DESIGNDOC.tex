@@ -57,7 +57,10 @@ struct page {
 
 /* This member was added into the thread struct so that each 
    process can manage its own SPT. */
-struct hash spt;
+struct thread
+{
+    struct hash spt;
+}
 
 ---- ALGORITHMS ----
 
@@ -157,11 +160,11 @@ static struct bitmap *used_map;             /* Bitmap which keeps track of which
 static struct lock bitmap_lock;             /* Bitmap Lock */
 static int cur_evict;                       /* Index to keep track of last eviction location in frame table */
 
-static struct bitmap *used_map;
-static struct block *swap_block;
-static int num_slots;
-static size_t sectors_per_page;
-static struct lock swap_lock;
+static struct bitmap *used_map;         /* map of used swap slots */
+static struct block *swap_block;        /* entire block on disk that makes up swap */
+static int num_slots;                   /* number of slot in our swap */
+static size_t sectors_per_page;         /* number of sectors in a page */
+static struct lock swap_lock;           /* lock for swap */
 
 ---- ALGORITHMS ----
 

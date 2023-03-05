@@ -180,10 +180,13 @@ static struct lock swap_lock;
 >> process Q, how do you adjust the page table (and any other data
 >> structures) to reflect the frame Q no longer has?
 
+TODO
 
 >> B4: Explain your heuristic for deciding whether a page fault for an
 >> invalid virtual address should cause the stack to be extended into
 >> the page that faulted.
+
+TODO
 
 ---- SYNCHRONIZATION ----
 
@@ -281,14 +284,72 @@ grained lock so that as much parallelism as possible can occur in those cases.
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+This struct is used to keep track of mapid mappings created from mmap calls.
+    struct mapid_elem
+    {
+        mapid_t mapid;
+        int fd;
+        void *start_addr;
+        struct list_elem elem;
+    };
+
+The mapid_list thread member variable keeps track of all of the mapid mappings
+created from a process's calls to mmap. The cur_mapid variable is the current
+id to give out to the next call of mmap.
+    struct thread
+    {
+       struct list mapid_list; 
+       int cur_mapid; 
+    }
+
 ---- ALGORITHMS ----
 
 >> C2: Describe how memory mapped files integrate into your virtual
 >> memory subsystem.  Explain how the page fault and eviction
 >> processes differ between swap pages and other pages.
 
+We create entries in our supplemental page table for each page of a memory
+mapped file. In the supplemental page table entries for these files,
+we keep track of information about the file that we will need to
+read from and write to the file on disk, such as the pointer to the file
+struct and the offset within the file we want to read and write to, along
+with the mapid for the mmap mapping. These spt entries are always writable
+and look similar to non memory mapped file entries, except non memory mapped
+entries have a mapid of NO_MAPID. This allows us to determine whether an 
+entry in the spt belongs to a memory mapped file.
+
+During the page fault and eviction processes, we are able to use the
+information stored in the spt entries to know when we are dealing with
+a memory mapped file's page. When page faulting, we are able to check the
+page's memory flag to see if the page is currently on disk when we are
+loading it in. If it is on disk, we know that it comes from a file and we
+are able to read page into physical memory from the file on disk. If we
+have a memory flag indicating that the page is on the swap partition, we
+are able to read that page back in to memory from the swap slot. During 
+eviction, we are able to use the mapid page entry member variable to
+determine if we are evicting a memory mapped file. If that is the case,
+we write that page's contents back to the file on disk. If the page entry's
+mapid is equal to the NO_MAPID constant, then we proceed by determing if
+we need to evict the page to the swap partition if the page belongs to an
+executable but is writable, or is simple a stack page. Else, if the page
+belongs to a file and is read-only, we are able to simply zero out the page
+since we can bring in the unchanged file from disk when we page fault on
+this page again.
+
 >> C3: Explain how you determine whether a new file mapping overlaps
 >> any existing segment.
+
+Given the mapping's starting address as a parameter, we first check that it
+is valid (is multiple of PGSIZE and non-NULL). If it is valid, we proceed by
+checking is the new mapping overlaps any existing segment. We use the file's 
+length, obtained by calling file_length on the file we are mapping, and
+calculate the total number of pages that the file will need to take up in its 
+mapping. We loop through all the pages that the mapping would use beginning
+from the given starting address parameter and check if
+an entry for that page already exists in the supplemental page table. If we
+ever encounter an already mapped page, we know that there is overlap and
+fail mmap. If we detect that there is no overlap, we are able to create page
+entries for all the pages we just looped over during our overlap check.
 
 ---- RATIONALE ----
 
@@ -298,6 +359,31 @@ grained lock so that as much parallelism as possible can occur in those cases.
 >> that much of their implementation can be shared.  Explain why your
 >> implementation either does or does not share much of the code for
 >> the two situations.
+
+Because of these similarities, we are able to treat both mmap mappings
+and data demand-paged from the executables the same when page faulting.
+When we page fault, we simply check if the data we need to bring in is
+on disk, which is true in both of these situation, and simple read in
+the data from the file on disk utilizing the same page entry member
+variables for both. The differences between the page entries for
+these different situations are the mapid value and writable bool. For 
+memory mapped files, all page entries will have a valid mapid value and
+writable will always be true. For data demand-paged from executables, 
+the mapid value will be NO_MAPID and the writable bool depends on what
+section of data it pertains too (code vs. data). This is important for
+page eviction and the freeing of pages upon process exit. If we are 
+evicting or freeing a page with a valid mapid, we write the data from
+memory back to the file on disk. If there is no valid mapid, then we 
+use the writable flag to know how to handle an eviction. If the page is
+writable, we write the page to a swap slot and read it back in from the
+swap slot when paged back in. If not writable, no writes to disk need to be
+made and we can read the data back in from the file system when it is paged
+back in. When simple freeing and not evicting page entries with no mapid,
+we never write back to disk. We are not able to share much of the code
+when evicting or freeing in these two situations because we must write to
+different partitions or not write depending on the situation. However,
+as explained before, we are able to share much of the code for these two
+situations when reading in from files (excluding data evicted to swap).
 
                SURVEY QUESTIONS
                ================

@@ -166,6 +166,12 @@ static int num_slots;                   /* number of slot in our swap */
 static size_t sectors_per_page;         /* number of sectors in a page */
 static struct lock swap_lock;           /* lock for swap */
 
+/* esp stack pointer saved when page faulting for stack growth heuristic*/
+struct thread
+{
+    void* esp;                  /* esp stack pointer */
+}
+
 ---- ALGORITHMS ----
 
 >> B2: When a frame is required but none is free, some frame must be
@@ -186,13 +192,64 @@ static struct lock swap_lock;           /* lock for swap */
 >> process Q, how do you adjust the page table (and any other data
 >> structures) to reflect the frame Q no longer has?
 
-TODO
+
+When process P needs to get a frame and ends up having to evict a frame that
+is currently occupied by process Q, we first clear the page in process Q's
+page directory so that it is no longer able to access that page's virtual
+addresses without page faulting. We then use the page entry from process Q's
+supplemental page table to determine how to evict the data from process Q.
+If we are dealing with a read only page from a file, we simply set the Q's
+page table entry memory flag to IN_DISK and do not execute any writes. If
+the page is writable and not memory mapped, we write the data to a swap slot
+and make sure to set the memory flag to IN_SWAP and set the page entries
+swap slot to the slot we wrote to. If it is from a memory mapped file, we
+write back to the file on disk and set the memory flag to IN_DISK. In all
+cases, we make sure to update the memory flag and set the page entry's
+physical address to NULL. Keeping track of all of this information allows
+us to correctly load the data back in when page faulting on the evicted page
+again. Once we have successfully evicted the page, we are able to update the
+frame table entry to now belong to the new process P and its page's virtual
+address. When the get_frame function returns to process P, it is able to use
+the returned frame_entry struct to update its own supplemental page table
+entry with frame that it is occupying and the frame's physical address. We
+also update the entries memory flag to reflect that it is now in memory.
+
+Outside of evictions, any time a frame is assigned to a supplemental page
+entry we update the fields of the page entry accorindingly to reflect this
+as well as the frame entry in the frame table. We also set create the mapping
+in the thread's page directory to prevent page faults on this now mapped page.
+When we free a page and no longer use a frame, we update both the page entry
+to no longer use the frame's data and the frame table to mark that frame as 
+free by setting the processs thread and virtual address thread fields to NULL.
+When a process calls get_frame and is assigned a frame without having to evict,
+it can be sure that the page table entries of any other processes will be 
+up to date and no longer using the information of the same frame. The process
+can safely map the virtual address to the frames physical address in its page
+directory and write its page data into the physical page. We update the fields
+of the page entry to reflect that it is now in memory.
 
 >> B4: Explain your heuristic for deciding whether a page fault for an
 >> invalid virtual address should cause the stack to be extended into
 >> the page that faulted.
 
-TODO
+In order to determine whether or not a page fault should cause the stack
+to be extended we created a new esp member variable for the thread struct.
+Whenever an interrupt handler is called and we see that we will be handling
+a page fault, we save the interrupt frame's esp pointer to the thread struct.
+This way, we have the correct esp pointer that we can reference in our
+load_page function. Within the load_page function, if no entry for the fault
+address exists in the supplemental page table then we may be in a situation
+where we need to extend the stack. We compare the fault address to the
+thread's esp pointer variable, and if the fault address is equivalent to the
+esp pointer or within 32 bytes below the stack pointer then we know that this
+is a valid stack access and can extend the stack by creating a supplemental
+page entry for it and zeroing out the stack page we are creating in memory.
+Our heuristic checks that esp - 32 <= fault address <= esp because the 
+PUSHA instruction checks access permissions before adjusting the stack pointer
+and pushes 32 bytes at once, so we have this lower bound of esp - 32 that
+we have to take into account. This is the most bytes that can be pushed by an
+instruction like that so we can be sure that esp - 32 is truly the lower bound.
+
 
 ---- SYNCHRONIZATION ----
 
@@ -224,6 +281,8 @@ fine grained frame_entry locks. To avoid circular deadlock we ensure
 that we always lock using the global bitmap_lock first and then
 follow it with the frame_entry lock. Swap locks are always internal to
 swap function calls and so ordering is not relevant in this case. 
+The filesys_lock is used by itself similiar to the swap lock, but is
+always called in the correct ordering to avoid circularity.
 
 >> B6: A page fault in process P can cause another process Q's frame
 >> to be evicted.  How do you ensure that Q cannot access or modify
@@ -262,16 +321,16 @@ In this situation we do NOT utilize page faulting. Our verify pointer call
 pins all the pages being accessed by that pointer. This in essence sets the
 frame pinned boolean to true for these frames. This ensures that any eviction
 will skip over any pinned pages so that we do not page fault in the kernel.
-In the verify pointer call instead of page faulting in ther kernel we load 
+In the verify pointer call instead of page faulting in the kernel we load 
 in the information from the supplemental page table and move forward with 
 the system call to avoid the situation of page faulting while in the
 kernel. 
 
-This ensures that if in this situation if we are working with an invalid
-virtual address we first check if the address is in the supplemental page 
-table. If it is not in the SPT we know that it is an invalid virtual
-address and gracefully handle the attempted accesses by
-calling our exit_handler(-1)
+This ensures that if in this situation where we are working with an invalid
+virtual address we first check that each page being in that buffer
+is in the supplemental page  table. If it is not in the SPT we know 
+that it is an invalid virtual address and gracefully handle the
+attempted accesses by calling our exit_handler(-1). 
 
 
 ---- RATIONALE ----

@@ -145,6 +145,7 @@ void free_frame(void* kpage)
             cur_frame->virtual_address = NULL;
             cur_frame->pinned = false;
             lock_release(&cur_frame->lock);
+            lock_release(&bitmap_lock);
             break;
         }
         lock_release(&cur_frame->lock);

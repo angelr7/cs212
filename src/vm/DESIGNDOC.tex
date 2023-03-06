@@ -171,12 +171,15 @@ static struct lock swap_lock;           /* lock for swap */
 >> B2: When a frame is required but none is free, some frame must be
 >> evicted.  Describe your code for choosing a frame to evict.
 
- We utilized the clock algorithm to manage eviction. We start at the beginning
- of our array and then check each frames page table accessed bit using its
- virtual address. If accessed is true, we set it to false and continue. If
+ We utilized the clock algorithm to manage eviction. The very first time
+ we evict we begin by looking at the start of our frame table array and iterate
+ through it. If the frame is pinned we skip over it. We then checked that frames
+ accessed bit, ff accessed is true, we set it to false and continue. If
  accessed is false we evict that page. The next time we evict we continue
  at the page after the one previously evicted. Once we reach the end we jump
- back to the beginning.
+ back to the beginning like a clock. We evict that frame depending on the
+ type of information it holds (originally from a file vs mmaped) and return
+ the index of the evicted frame, so that the evicted frame entry can be used.
 
 
 >> B3: When a process P obtains a frame that was previously used by a
@@ -215,7 +218,12 @@ to ensure that simultaneous swap_add or simultaneous swap_remove calls
 are not possible. 
 
 For both swap and frame we keep the ordering consistent
-to ensure that out of order locking issues do not occur. 
+to ensure that out of order locking issues do not occur. This
+is especially relevant with the global frame table lock and the
+fine grained frame_entry locks. To avoid circular deadlock we ensure
+that we always lock using the global bitmap_lock first and then
+follow it with the frame_entry lock. Swap locks are always internal to
+swap function calls and so ordering is not relevant in this case. 
 
 >> B6: A page fault in process P can cause another process Q's frame
 >> to be evicted.  How do you ensure that Q cannot access or modify
@@ -228,16 +236,21 @@ from the supplemental page table at the address which we faulted at.
 Our get_frame() call is locked using our bitmap_lock and will not fetch 
 any frame until the bitmap_lock is released. Whenever we call evict_algo 
 it is protected using the bitmap_lock as well. This ensures that process 
-Q will not be able to access or modify the frame until after the eviction 
-algorithm completes. 
+Q will not be able to access or modify any frame until after P completes 
+the eviction algorithm. This ensures that a race is not possible
+in the situation described.
 
 >> B7: Suppose a page fault in process P causes a page to be read from
 >> the file system or swap.  How do you ensure that a second process Q
 >> cannot interfere by e.g. attempting to evict the frame while it is
 >> still being read in?
 
-pin every frame when created and unpin when finished creating so can not be
-evicted. 
+To read in a frame a process must call get_frame. In our get_frame call
+we pin that frame to ensure that it can not be evicted. In the locations
+where the frame is getting read in we do not unpin until the read is
+completed. This will ensure that the eviction algorithm will always
+skip over pages which are being read because they are currently being
+pinned. 
 
 >> B8: Explain how you handle access to paged-out pages that occur
 >> during system calls.  Do you use page faults to bring in pages (as
@@ -245,17 +258,20 @@ evicted.
 >> into physical memory, or do you use some other design?  How do you
 >> gracefully handle attempted accesses to invalid virtual addresses?
 
-In this situation we do not utilize page faulting. Our verify pointer call
+In this situation we do NOT utilize page faulting. Our verify pointer call
 pins all the pages being accessed by that pointer. This in essence sets the
 frame pinned boolean to true for these frames. This ensures that any eviction
 will skip over any pinned pages so that we do not page fault in the kernel.
+In the verify pointer call instead of page faulting in ther kernel we load 
+in the information from the supplemental page table and move forward with 
+the system call to avoid the situation of page faulting while in the
+kernel. 
 
 This ensures that if in this situation if we are working with an invalid
-virtual address we first must check if it is in the suppl
-We gracefully handle attempted accesses to invalid virtual addresses by
-calling our exit_handler(-1). We do this by checking the pagedirectory
-and the supplemental page table to ensure that every page is a valid
-address in either one otherwise we call exit_handler(-1)
+virtual address we first check if the address is in the supplemental page 
+table. If it is not in the SPT we know that it is an invalid virtual
+address and gracefully handle the attempted accesses by
+calling our exit_handler(-1)
 
 
 ---- RATIONALE ----
@@ -267,16 +283,38 @@ address in either one otherwise we call exit_handler(-1)
 >> where your design falls along this continuum and why you chose to
 >> design it this way.
 
-We utilize a combination of larger locks such as our bitmap_lock and
-fine grained locks such as our frame_entry locks to lock in differing
+We utilize a combination of larger locks such as our bitmap_lock and swap_lock
+as well as fine grained locks such as frame_entry locks to lock in differing
 situations and to lock large chunks of memory or high traffic areas 
 for the minimum time possible. 
 
-We felt that solely having large locks would limit parallelism in many ways, 
-but that having solely course grained locks would make actions such as multiple
-processess calling get_frame, evict_algo, swap_remove, or swap_add. In other
-situations when we are working only with specific frames we allow for a finer
-grained lock so that as much parallelism as possible can occur in those cases.
+We felt that solely having large locks would limit parallelism in many ways.
+At the same time having solely fine grained locks would allow for multiple
+processes to call functions such as get_frame, evict_algo, swap_remove, 
+or swap_add simultaneously, which would introduce many dangerous race
+conditions. 
+
+In swap we use one larger swap lock, we did this because it was crucial that
+no simultaneous calls would be adding at the same time, removing at the same
+time or some combination of the two. If this was possible we would have a 
+multitude of race conditions, when trying to read and write to the block
+at the same time. Another option would have been fine grained locks for
+each sector but it felt like it would not add in very much parallelism since
+we would need to be locking our bitmap with a global lock every time 
+regardless, and we would need to lock the entire block on block_read and
+block_write calls.
+
+For our frame table we used a global bitmap_lock as well as fine grained
+locks for every frame entry. There were many instances in which we would
+need to work with just one frame_entry but locking the entire frame_table
+seemed unreasonable and would reduce parallelism drastically. Because of
+this we used fine grained locks as much as possible, but in cases where
+the frame table should not be editted at the same time such as get_frame,
+remove_frame, and evict_algo we utilize the global bitmap lock to ensure
+that eviction can not be parallel with adding and removing frames. 
+
+We utilize the global filysys_lock to protect from any simultaneous system
+calls such as filesys_read, filesys_write, etc. 
 
              MEMORY MAPPED FILES
              ===================

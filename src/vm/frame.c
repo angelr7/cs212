@@ -134,14 +134,13 @@ void free_frame(void* kpage)
     for (size_t i = 0; i < frame_table_size; i++)
     {
         struct frame_entry *cur_frame = frame_table[i];
+        lock_acquire(&bitmap_lock);
         lock_acquire(&cur_frame->lock);
         if (cur_frame->physical_address == kpage && 
             cur_frame->process_thread == thread_current())
         {
             ASSERT(bitmap_all (used_map, i, 1));
-            lock_acquire(&bitmap_lock);
             bitmap_set(used_map, i, false);
-            lock_release(&bitmap_lock);
             cur_frame->process_thread = NULL;
             cur_frame->virtual_address = NULL;
             cur_frame->pinned = false;
@@ -149,5 +148,6 @@ void free_frame(void* kpage)
             break;
         }
         lock_release(&cur_frame->lock);
+        lock_release(&bitmap_lock);
     }
 }

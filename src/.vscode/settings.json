@@ -6,6 +6,8 @@
         "atomic": "c",
         "*.tcc": "c",
         "fstream": "c",
-        "sstream": "c"
+        "sstream": "c",
+        "directory.h": "c",
+        "block.h": "c"
     }
 }

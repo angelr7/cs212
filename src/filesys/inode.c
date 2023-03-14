@@ -11,6 +11,16 @@
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
 
+/*
+  Contains a pointer to the sector and 
+  whether it should be zeroed.
+*/
+struct sector_pointer 
+{
+  block_sector_t pointer;
+  bool zeroed;
+};
+
 /* On-disk inode.
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */
 struct inode_disk
@@ -18,7 +28,8 @@ struct inode_disk
   block_sector_t start; /* First data sector. */
   off_t length;         /* File size in bytes. */
   unsigned magic;       /* Magic number. */
-  uint32_t unused[125]; /* Not used. */
+  struct sector_pointer pointers[15]; /* Pointers to indirect blocks. (2 doubly-indirect pointers) */
+  char *unused[425]; /* Not used. */
 };
 
 /* Returns the number of sectors to allocate for an inode SIZE
@@ -95,7 +106,7 @@ bool inode_create(block_sector_t sector, off_t length)
         static char zeros[BLOCK_SECTOR_SIZE];
         size_t i;
 
-        for (i = 0; i < sectors; i++)
+        for (i = 0; i < sectors; i++) 
           buffer_cache_write(fs_device, disk_inode->start + i, zeros, 0, BLOCK_SECTOR_SIZE);
           // block_write(fs_device, disk_inode->start + i, zeros);
       }

@@ -10,12 +10,13 @@
 
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
+#define POINTERS_IN_SECTOR 128
 
 /*
-  Contains a pointer to the sector and 
+  Contains a pointer to the sector and
   whether it should be zeroed.
 */
-struct sector_pointer 
+struct sector_pointer
 {
   block_sector_t pointer;
   bool zeroed;
@@ -68,23 +69,23 @@ byte_to_sector(const struct inode *inode, off_t pos)
 static block_sector_t
 sector_idx_to_num(block_sector_t *pointers, block_sector_t sector_idx)
 {
-    block_sector_t sector_num = 0;
-    if (sector_idx < 12)
-      return pointers[sector_idx];
-    else if (sector_idx < 12 + 128)
-    {
-      block_sector_t indirect_idx = sector_idx - 12;
-      buffer_cache_read(fs_device, pointers[12], &sector_num, sizeof(block_sector_t) * indirect_idx, sizeof(block_sector_t)); 
-    }
-    else
-    {
-      block_sector_t doubly_indirect[128];
-      buffer_cache_read(fs_device, pointers[13], doubly_indirect, 0, BLOCK_SECTOR_SIZE);
-      block_sector_t indirect_idx = doubly_indirect[(sector_idx - 140) / BLOCK_SECTOR_SIZE];
-      block_sector_t direct_idx = sector_idx - (140 + 128 * indirect_idx);
-      buffer_cache_read(fs_device, doubly_indirect[indirect_idx], &sector_num, sizeof(block_sector_t) * direct_idx, sizeof(block_sector_t));
-    }
-    return sector_num;
+  block_sector_t sector_num = 0;
+  if (sector_idx < 12)
+    return pointers[sector_idx];
+  else if (sector_idx < 12 + 128)
+  {
+    block_sector_t indirect_idx = sector_idx - 12;
+    buffer_cache_read(fs_device, pointers[12], &sector_num, sizeof(block_sector_t) * indirect_idx, sizeof(block_sector_t));
+  }
+  else
+  {
+    block_sector_t doubly_indirect[128];
+    buffer_cache_read(fs_device, pointers[13], doubly_indirect, 0, BLOCK_SECTOR_SIZE);
+    block_sector_t indirect_idx = doubly_indirect[(sector_idx - 140) / BLOCK_SECTOR_SIZE];
+    block_sector_t direct_idx = sector_idx - (140 + 128 * indirect_idx);
+    buffer_cache_read(fs_device, doubly_indirect[indirect_idx], &sector_num, sizeof(block_sector_t) * direct_idx, sizeof(block_sector_t));
+  }
+  return sector_num;
 }
 
 /* List of open inodes, so that opening a single inode twice
@@ -95,6 +96,137 @@ static struct list open_inodes;
 void inode_init(void)
 {
   list_init(&open_inodes);
+}
+
+void cleanup_errors(int failure_idx, block_sector_t *pointers, block_sector_t *indirect_ptrs)
+{
+  if (failure_idx < 0)
+    return;
+
+  int num_data_blocks = failure_idx < 12 ? failure_idx : 12;
+  for (int i = 0; i < num_data_blocks; i++)
+    free_map_release(pointers[i]);
+
+  if (failure_idx <= 12) return;
+
+  failure_idx -= 12;
+  int num_indirect_pointers = failure_idx < POINTERS_IN_SECTOR? failure_idx : POINTERS_IN_SECTOR;
+  block_sector_t direct_pointers[POINTERS_IN_SECTOR];
+  buffer_cache_read(fs_device, pointers[12], direct_pointers, 0, BLOCK_SECTOR_SIZE);
+
+  for (int i = 0; i < num_indirect_pointers; i++) 
+    free_map_release(direct_pointers[i]);
+
+  if (failure_idx <= 128) return;
+
+  failure_idx -= 128;
+  int num_indirect_blocks = (failure_idx / 128) + 1;
+  for (int i  = 0; i < num_indirect_blocks; i++) {
+    block_sector_t indirect_block = indirect_ptrs[i];
+    block_sector_t double_indirect_ptrs[POINTERS_IN_SECTOR];
+    buffer_cache_read(fs_device, indirect_block, double_indirect_ptrs, 0, BLOCK_SECTOR_SIZE);
+    
+    for (int j  = 0; j < (failure_idx < 128)? failure_idx : 128; j++) 
+      free_map_release(double_indirect_ptrs[j], 1);
+    
+    free_map_release(indirect_ptrs[i], 1);
+    failure_idx -= 128;
+  }
+
+  free_map_release(pointers[13], 1);
+}
+
+// TODO: instead of writing each sector to the cache one-by-one, we can simply
+// place all of our allocated sectors into one array and write them all to the
+// cache when we're done using one call. this saves IO time that gets used when
+// constantly writing.
+bool allocate_sectors(size_t cnt, block_sector_t *pointers)
+{
+  int failure_idx = -1;
+  bool indirect_allocated = false;
+  bool doubly_indirect_allocated = false;
+  block_sector_t indirect_ptrs[128];
+
+  for (size_t i = 0; i < cnt; i++)
+  {
+    block_sector_t sector;
+    if (!free_map_allocate(1, &sector))
+    {
+      failure_idx = i;
+      break;
+    }
+
+    if (i < 12)
+    {
+      pointers[i] = sector;
+    }
+
+    else if (i < 12 + POINTERS_IN_SECTOR)
+    {
+      if (!indirect_allocated)
+      {
+        if (!free_map_allocate(1, pointers[12]))
+        {
+          failure_idx = i;
+          free_map_release(sector, 1);
+          break;
+        }
+        static char zeros[BLOCK_SECTOR_SIZE];
+        buffer_cache_write(fs_device, pointers[12], zeros, 0, BLOCK_SECTOR_SIZE);
+        indirect_allocated = true;
+      }
+
+      buffer_cache_write(fs_device, pointers[12], &sector,
+                         sizeof(block_sector_t) * (sector - 12),
+                         sizeof(block_sector_t));
+    }
+    else
+    {
+      if (!doubly_indirect_allocated)
+      {
+        if (!free_map_allocate(1, pointers[13]))
+        {
+          failure_idx = i;
+          free_map_release(sector, 1);
+          break;
+        }
+
+        // TODO: handle bitmap error
+        static char zeros[BLOCK_SECTOR_SIZE];
+        buffer_cache_write(fs_device, pointers[13], zeros, 0, BLOCK_SECTOR_SIZE);
+        doubly_indirect_initialized = true;
+      }
+
+      block_sector_t indirect_sector_idx = (sector - 140) / 512;
+      block_sector_t direct_sector_idx = sector - (140 + 128 * indirect_sector_idx);
+      if (direct_sector_idx == 0)
+      {
+        block_sector_t indirect_sector;
+        if (!free_map_allocate(1, &indirect_sector))
+        {
+          failure_idx = i;
+          free_map_release(sector, 1);
+          if (indirect_sector_idx == 0)
+          {
+            free_map_release(pointers[13]);
+          }
+          break;
+        }
+
+        buffer_cache_write(fs_device, indirect_sector, zeros, 0, BLOCK_SECTOR_SIZE);
+        buffer_cache_write(fs_device, pointers[13], &indirect_sector, sizeof(block_sector_t) * indirect_sector_idx, sizeof(block_sector_t));
+        indirect_ptrs[indirect_sector_idx] = indirect_sector;
+      }
+
+      buffer_cache_write(fs_device,
+                         indirect_ptrs[indirect_sector_idx],
+                         &sector, sizeof(block_sector_t) * direct_sector_idx,
+                         sizeof(block_sector_t));
+    }
+  }
+
+  cleanup_errors(failure_idx);
+  return failure_idx == -1;
 }
 
 /* Initializes an inode with LENGTH bytes of data and
@@ -173,7 +305,7 @@ inode_open(block_sector_t sector)
   inode->deny_write_cnt = 0;
   inode->removed = false;
   buffer_cache_read(fs_device, inode->sector, &inode->data,
-                      0, BLOCK_SECTOR_SIZE);
+                    0, BLOCK_SECTOR_SIZE);
   // block_read(fs_device, inode->sector, &inode->data);
   return inode;
 }
@@ -318,7 +450,7 @@ off_t inode_write_at(struct inode *inode, const void *buffer_, off_t size,
       break;
 
     buffer_cache_write(fs_device, sector_idx, buffer + bytes_written,
-                      sector_ofs, chunk_size);
+                       sector_ofs, chunk_size);
 
     // if (sector_ofs == 0 && chunk_size == BLOCK_SECTOR_SIZE)
     // {

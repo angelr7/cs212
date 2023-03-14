@@ -28,92 +28,105 @@ free_map_init (void)
 bool
 free_map_allocate (size_t cnt, block_sector_t *sectors)
 {
-  bool indirect_initialized = false;
-  bool doubly_indirect_initialized = false;
+  // bool indirect_initialized = false;
+  // bool doubly_indirect_initialized = false;
 
-  bool initialized[128];
-  block_sector_t indirect_sectors[128];
+  // bool initialized[128];
+  // block_sector_t indirect_sectors[128];
 
-  block_sector_t sector = BITMAP_ERROR;
+  // block_sector_t sector = BITMAP_ERROR;
 
-  for (size_t i = 0; i < cnt; i++)
-  {
-    sector = bitmap_scan_and_flip (free_map, 0, 1, false);
-    if (sector != BITMAP_ERROR
-        && free_map_file != NULL
-        && !bitmap_write (free_map, free_map_file))
-      {
-        bitmap_set_multiple (free_map, sector, 1, false); 
-        sector = BITMAP_ERROR;
-      }
-    if (sector != BITMAP_ERROR)
-    {
-      if (i < 12)
-        sectors[i] = sector;
-      else if (i < 128 + 12)
-      {
-        if (!indirect_initialized)
-        {
-        block_sector_t indirect_sector = bitmap_scan_and_flip(free_map, 0, 1, false);
-        // TODO: handle bitmap error
-        static char zeros[BLOCK_SECTOR_SIZE];
-        buffer_cache_write(fs_device, indirect_sector, zeros, 0, BLOCK_SECTOR_SIZE);
-        sectors[12] = indirect_sector;
-        indirect_initialized = true;
-        }
-        // block_sector_t sector_num_buf[1] = {sector};
-        buffer_cache_write(fs_device, sectors[12], &sector, 
-                          sizeof(block_sector_t) * (sector - 12), 
-                          sizeof(block_sector_t));
-      }
-      else
-      {
-        if (!doubly_indirect_initialized)
-        {
-          block_sector_t doubly_indirect_sector = bitmap_scan_and_flip(free_map, 0, 1, false);
-          // TODO: handle bitmap error
-          static char zeros[BLOCK_SECTOR_SIZE];
-          buffer_cache_write(fs_device, doubly_indirect_sector, zeros, 0, BLOCK_SECTOR_SIZE);
-          sectors[13] = doubly_indirect_sector;
-          doubly_indirect_initialized = true;
-          
-        }
+  // int failure_idx = -1;
 
-        block_sector_t indirect_sector_idx = (sector - 140) / 512;
-        if (!initialized[indirect_sector_idx])
-        {
-          block_sector_t indirect_sector = bitmap_scan_and_flip(free_map, 0, 1, false);
-          // TODO: handle bitmap error
-          static char zeros[BLOCK_SECTOR_SIZE];
-          buffer_cache_write(fs_device, indirect_sector, zeros, 0, BLOCK_SECTOR_SIZE);
-          buffer_cache_write(fs_device, sectors[13], &indirect_sector, 
-                            sizeof(block_sector_t) * indirect_sector_idx, 
-                            sizeof(block_sector_t));
-          initialized[indirect_sector_idx] = true;
-          indirect_sectors[indirect_sector_idx] = indirect_sector;
-        }
-
-        block_sector_t indirect_sector = indirect_sectors[indirect_sector_idx];
-        // buffer_cache_read(fs_device, sectors[13], &actual_indirect, sizeof(block_sector_t) * indirect_sector, sizeof(block_sector_t));
-        block_sector_t direct_sector_idx = sector - (140 + 128 * indirect_sector_idx);
-        buffer_cache_write(fs_device, indirect_sector, &sector, 
-                          sizeof(block_sector_t) * direct_sector_idx, 
-                          sizeof(block_sector_t));
-      }
-    }
-  }
-
-
-  // block_sector_t sector = bitmap_scan_and_flip (free_map, 0, cnt, false);
-  // if (sector != BITMAP_ERROR
-  //     && free_map_file != NULL
-  //     && !bitmap_write (free_map, free_map_file))
+  // for (size_t i = 0; i < cnt; i++)
+  // {
+  //   sector = bitmap_scan_and_flip (free_map, 0, 1, false);
+  //   if (sector != BITMAP_ERROR
+  //       && free_map_file != NULL
+  //       && !bitmap_write (free_map, free_map_file))
+  //     {
+  //       bitmap_set_multiple (free_map, sector, 1, false); 
+  //       sector = BITMAP_ERROR;
+  //     }
+  //   if (sector != BITMAP_ERROR)
   //   {
-  //     bitmap_set_multiple (free_map, sector, cnt, false); 
-  //     sector = BITMAP_ERROR;
+  //     if (i < 12)
+  //       sectors[i] = sector;
+  //     else if (i < 128 + 12)
+  //     {
+  //       if (!indirect_initialized)
+  //       {
+  //       block_sector_t indirect_sector = bitmap_scan_and_flip(free_map, 0, 1, false);
+  //       // TODO: handle bitmap error
+  //       static char zeros[BLOCK_SECTOR_SIZE];
+  //       buffer_cache_write(fs_device, indirect_sector, zeros, 0, BLOCK_SECTOR_SIZE);
+  //       sectors[12] = indirect_sector;
+  //       indirect_initialized = true;
+  //       }
+  //       // block_sector_t sector_num_buf[1] = {sector};
+  //       buffer_cache_write(fs_device, sectors[12], &sector, 
+  //                         sizeof(block_sector_t) * (sector - 12), 
+  //                         sizeof(block_sector_t));
+  //     }
+  //     else
+  //     {
+  //       if (!doubly_indirect_initialized)
+  //       {
+  //         block_sector_t doubly_indirect_sector = bitmap_scan_and_flip(free_map, 0, 1, false);
+  //         // TODO: handle bitmap error
+  //         static char zeros[BLOCK_SECTOR_SIZE];
+  //         buffer_cache_write(fs_device, doubly_indirect_sector, zeros, 0, BLOCK_SECTOR_SIZE);
+  //         sectors[13] = doubly_indirect_sector;
+  //         doubly_indirect_initialized = true;
+          
+  //       }
+
+  //       block_sector_t indirect_sector_idx = (sector - 140) / 512;
+  //       if (!initialized[indirect_sector_idx])
+  //       {
+  //         block_sector_t indirect_sector = bitmap_scan_and_flip(free_map, 0, 1, false);
+  //         // TODO: handle bitmap error
+  //         static char zeros[BLOCK_SECTOR_SIZE];
+  //         buffer_cache_write(fs_device, indirect_sector, zeros, 0, BLOCK_SECTOR_SIZE);
+  //         buffer_cache_write(fs_device, sectors[13], &indirect_sector, 
+  //                           sizeof(block_sector_t) * indirect_sector_idx, 
+  //                           sizeof(block_sector_t));
+  //         initialized[indirect_sector_idx] = true;
+  //         indirect_sectors[indirect_sector_idx] = indirect_sector;
+  //       }
+
+  //       block_sector_t indirect_sector = indirect_sectors[indirect_sector_idx];
+  //       // buffer_cache_read(fs_device, sectors[13], &actual_indirect, sizeof(block_sector_t) * indirect_sector, sizeof(block_sector_t));
+  //       block_sector_t direct_sector_idx = sector - (140 + 128 * indirect_sector_idx);
+  //       buffer_cache_write(fs_device, indirect_sector, &sector, 
+  //                         sizeof(block_sector_t) * direct_sector_idx, 
+  //                         sizeof(block_sector_t));
+  //     }
+  //   } else {
+  //     failure_idx = i;
+  //     break;
   //   }
-  // if (sector != BITMAP_ERROR)
-  //   *sectorp = sector;
+  // }
+
+  // for (int i = 0; i < failure_idx; i++) {
+  //   if (i < 12) {
+
+  //   }
+  // }
+
+
+  block_sector_t sector = bitmap_scan_and_flip (free_map, 0, cnt, false);
+  if (sector != BITMAP_ERROR
+      && free_map_file != NULL
+      && !bitmap_write (free_map, free_map_file))
+    {
+      bitmap_set_multiple (free_map, sector, cnt, false); 
+      sector = BITMAP_ERROR;
+    }
+    
+  if (sector != BITMAP_ERROR)
+    *sectorp = sector;
+
   return sector != BITMAP_ERROR;
 }
 

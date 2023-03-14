@@ -226,7 +226,15 @@ bool allocate_sectors(size_t cnt, block_sector_t *pointers)
   }
 
   cleanup_errors(failure_idx);
-  return failure_idx == -1;
+  return failure_idx == -1;  // for (int i = 0; i < failure_idx; i++) {
+  //   if (i < 12)
+  //     free_map_release(pointers[i], 1);
+  //   else {
+
+  //   }
+
+  // }
+
 }
 
 /* Initializes an inode with LENGTH bytes of data and

@@ -17,8 +17,9 @@ struct inode_disk
 {
   block_sector_t start; /* First data sector. */
   off_t length;         /* File size in bytes. */
+  block_sector_t pointers[14];
   unsigned magic;       /* Magic number. */
-  uint32_t unused[125]; /* Not used. */
+  uint32_t unused[111]; /* Not used. */
 };
 
 /* Returns the number of sectors to allocate for an inode SIZE
@@ -54,6 +55,28 @@ byte_to_sector(const struct inode *inode, off_t pos)
     return -1;
 }
 
+static block_sector_t
+sector_idx_to_num(block_sector_t *pointers, block_sector_t sector_idx)
+{
+    block_sector_t sector_num = 0;
+    if (sector_idx < 12)
+      return pointers[sector_idx];
+    else if (sector_idx < 12 + 128)
+    {
+      block_sector_t indirect_idx = sector_idx - 12;
+      buffer_cache_read(fs_device, pointers[12], &sector_num, sizeof(block_sector_t) * indirect_idx, sizeof(block_sector_t)); 
+    }
+    else
+    {
+      block_sector_t doubly_indirect[128];
+      buffer_cache_read(fs_device, pointers[13], doubly_indirect, 0, BLOCK_SECTOR_SIZE);
+      block_sector_t indirect_idx = doubly_indirect[(sector_idx - 140) / BLOCK_SECTOR_SIZE];
+      block_sector_t direct_idx = sector_idx - (140 + 128 * indirect_idx);
+      buffer_cache_read(fs_device, doubly_indirect[indirect_idx], &sector_num, sizeof(block_sector_t) * direct_idx, sizeof(block_sector_t));
+    }
+    return sector_num;
+}
+
 /* List of open inodes, so that opening a single inode twice
    returns the same `struct inode'. */
 static struct list open_inodes;
@@ -86,18 +109,19 @@ bool inode_create(block_sector_t sector, off_t length)
     size_t sectors = bytes_to_sectors(length);
     disk_inode->length = length;
     disk_inode->magic = INODE_MAGIC;
-    if (free_map_allocate(sectors, &disk_inode->start))
+    if (free_map_allocate(sectors, disk_inode->pointers))
     {
       buffer_cache_write(fs_device, sector, disk_inode, 0, BLOCK_SECTOR_SIZE);
-      // block_write(fs_device, sector, disk_inode);
       if (sectors > 0)
       {
         static char zeros[BLOCK_SECTOR_SIZE];
         size_t i;
 
         for (i = 0; i < sectors; i++)
-          buffer_cache_write(fs_device, disk_inode->start + i, zeros, 0, BLOCK_SECTOR_SIZE);
-          // block_write(fs_device, disk_inode->start + i, zeros);
+        {
+          block_sector_t sector_num = sector_idx_to_num(disk_inode->pointers, i);
+          buffer_cache_write(fs_device, sector_num, zeros, 0, BLOCK_SECTOR_SIZE);
+        }
       }
       success = true;
     }

@@ -11,6 +11,8 @@
 #include "userprog/process.h"
 #include "userprog/syscall.h"
 
+#define STACK_LIMIT 8388608
+
 void page_create_zero_entry(void *uaddr, struct frame_entry *frame, bool writable, bool loaded);
 void page_create_file_entry(void *uaddr, struct frame_entry *frame, struct file *file, off_t file_ofs,
                             size_t read_bytes, size_t zero_bytes, bool writable, mapid_t mapid);
@@ -60,6 +62,8 @@ bool load_page(void *fault_addr)
         if (fault_addr <= thread_current()->esp && 
         fault_addr >= thread_current()->esp - 32)
         {
+            if (fault_addr <= (char *)PHYS_BASE - STACK_LIMIT)
+                PANIC("stack overflow\n");
             struct frame_entry *frame = get_frame(upage, PAL_USER);
             uint8_t *kpage = frame->physical_address;
             if (kpage == NULL)

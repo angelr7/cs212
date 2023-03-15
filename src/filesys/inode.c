@@ -50,6 +50,7 @@ static block_sector_t pos_to_sector_idx(off_t pos)
 static block_sector_t
 sector_idx_to_num(block_sector_t *pointers, block_sector_t sector_idx)
 {
+  // mapid list of current thread corrupts after next line executes for file lg-create test
   block_sector_t sector_num = 0;
   if (sector_idx < 12)
     return pointers[sector_idx];
@@ -62,9 +63,10 @@ sector_idx_to_num(block_sector_t *pointers, block_sector_t sector_idx)
   {
     block_sector_t doubly_indirect[128];
     buffer_cache_read(fs_device, pointers[13], doubly_indirect, 0, BLOCK_SECTOR_SIZE);
-    block_sector_t indirect_idx = doubly_indirect[(sector_idx - 140) / BLOCK_SECTOR_SIZE];
+    block_sector_t indirect_idx = (sector_idx - 140) / BLOCK_SECTOR_SIZE;
+    block_sector_t indirect_sector_num = doubly_indirect[indirect_idx];
     block_sector_t direct_idx = sector_idx - (140 + 128 * indirect_idx);
-    buffer_cache_read(fs_device, doubly_indirect[indirect_idx], &sector_num, sizeof(block_sector_t) * direct_idx, sizeof(block_sector_t));
+    buffer_cache_read(fs_device, indirect_sector_num, &sector_num, sizeof(block_sector_t) * direct_idx, sizeof(block_sector_t));
   }
   return sector_num;
 }
@@ -140,7 +142,7 @@ static void cleanup_errors(int failure_idx, block_sector_t *pointers, block_sect
 // place all of our allocated sectors into one array and write them all to the
 // cache when we're done using one call. this saves IO time that gets used when
 // constantly writing.
-static bool allocate_sectors(size_t cnt, block_sector_t *pointers)
+static bool allocate_sectors(size_t starting_block, size_t cnt, block_sector_t *pointers)
 {
   int failure_idx = -1;
   bool indirect_allocated = false;
@@ -148,8 +150,18 @@ static bool allocate_sectors(size_t cnt, block_sector_t *pointers)
   block_sector_t indirect_ptrs[128];
   static char zeros[BLOCK_SECTOR_SIZE];
 
+  if (starting_block > 12)
+  {
+    indirect_allocated = true;
+  }
+  if (starting_block > 140)
+  {
+    doubly_indirect_allocated = true;
+    buffer_cache_read(fs_device, pointers[13], indirect_ptrs, 0, BLOCK_SECTOR_SIZE);
+  }
 
-  for (size_t i = 0; i < cnt; i++)
+
+  for (size_t i = starting_block; i < starting_block + cnt; i++)
   {
     block_sector_t sector;
     if (!free_map_allocate(1, &sector))
@@ -179,7 +191,7 @@ static bool allocate_sectors(size_t cnt, block_sector_t *pointers)
       }
 
       buffer_cache_write(fs_device, pointers[12], &sector,
-                         sizeof(block_sector_t) * (sector - 12),
+                         sizeof(block_sector_t) * (i - 12),
                          sizeof(block_sector_t));
     }
     else
@@ -196,8 +208,8 @@ static bool allocate_sectors(size_t cnt, block_sector_t *pointers)
         doubly_indirect_allocated = true;
       }
 
-      block_sector_t indirect_sector_idx = (sector - 140) / 512;
-      block_sector_t direct_sector_idx = sector - (140 + 128 * indirect_sector_idx);
+      block_sector_t indirect_sector_idx = (i - 140) / POINTERS_IN_SECTOR;
+      block_sector_t direct_sector_idx = i - (140 + 128 * indirect_sector_idx);
       if (direct_sector_idx == 0)
       {
         block_sector_t indirect_sector;
@@ -250,7 +262,7 @@ bool inode_create(block_sector_t sector, off_t length)
     size_t sectors = bytes_to_sectors(length);
     disk_inode->length = length;
     disk_inode->magic = INODE_MAGIC;
-    if (allocate_sectors(sectors, disk_inode->pointers))
+    if (allocate_sectors(0, sectors, disk_inode->pointers))
     {
       buffer_cache_write(fs_device, sector, disk_inode, 0, BLOCK_SECTOR_SIZE);
       if (sectors > 0)
@@ -432,6 +444,27 @@ off_t inode_write_at(struct inode *inode, const void *buffer_, off_t size,
 
   if (inode->deny_write_cnt)
     return 0;
+
+  block_sector_t starting_sector = pos_to_sector_idx(inode_length(inode));
+  // printf("starting sector for byte %d: %d\n", inode_length(inode), starting_sector);
+  off_t final_byte = offset + size;
+  block_sector_t final_write_sector = pos_to_sector_idx(final_byte);
+  // printf("final write sector for byte %d: %d\n", final_byte, final_write_sector);
+  if (final_write_sector > starting_sector)
+  {
+    printf("NEED TO EXTEND\n");
+    struct inode_disk inode_disk;
+    for (int i = 0; i < 10; i++)
+      printf("%d\n", i);
+    buffer_cache_read(fs_device, inode->sector, &inode_disk, 0, BLOCK_SECTOR_SIZE);
+    if (!allocate_sectors(starting_sector + 1, final_write_sector - starting_sector, inode_disk.pointers))
+    {
+      printf("allocated\n");
+    }
+      return 0; // TODO: figure out of we need to write as much as we can if not enough space to extend file all the way
+    buffer_cache_write(fs_device, inode->sector, &inode_disk, 0, BLOCK_SECTOR_SIZE);
+  }
+  
 
   while (size > 0)
   {

@@ -538,7 +538,7 @@ close(int fd)
 static void
 mmap(int fd, void *addr, struct intr_frame *f)
 {
-  if (pg_round_down(addr) != addr || addr == 0x0)
+  if (pg_round_down(addr) != addr || addr == 0x0 || is_kernel_vaddr(pg_round_down(addr)))
   {
     f->eax = -1;
     return;

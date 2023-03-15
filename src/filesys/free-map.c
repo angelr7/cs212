@@ -26,7 +26,7 @@ free_map_init (void)
    sectors were available or if the free_map file could not be
    written. */
 bool
-free_map_allocate (size_t cnt, block_sector_t *sectors)
+free_map_allocate (size_t cnt, block_sector_t *sectorp)
 {
   // bool indirect_initialized = false;
   // bool doubly_indirect_initialized = false;

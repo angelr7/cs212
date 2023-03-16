@@ -3,6 +3,7 @@
 #include <debug.h>
 #include <round.h>
 #include <string.h>
+#include <stdio.h>
 #include "filesys/filesys.h"
 #include "filesys/free-map.h"
 #include "filesys/cache.h"
@@ -83,11 +84,16 @@ byte_to_sector(const struct inode *inode, off_t pos)
   //   return inode->data.start + pos / BLOCK_SECTOR_SIZE;
   // else
   //   return -1;
-  struct inode_disk inode_disk;
-  buffer_cache_read(fs_device, inode->sector, &inode_disk, 0, BLOCK_SECTOR_SIZE);
-  if (pos >= inode_disk.length)
+  // struct inode_disk inode_disk;
+  struct inode_disk *inode_disk = NULL;
+  inode_disk = calloc(1, sizeof *inode_disk);
+  buffer_cache_read(fs_device, inode->sector, inode_disk, 0, BLOCK_SECTOR_SIZE);
+  // buffer_cache_read(fs_device, inode.sector, inode_disk, 0, BLOCK_SECTOR_SIZE);
+  if (pos >= inode_disk->length)
     return -1;
-  return (sector_idx_to_num(&inode_disk.pointers, pos_to_sector_idx(pos)));
+  block_sector_t sector_num = sector_idx_to_num(inode_disk->pointers, pos_to_sector_idx(pos));
+  free(inode_disk);
+  return sector_num;
 }
 
 /* List of open inodes, so that opening a single inode twice
@@ -248,6 +254,7 @@ static bool allocate_sectors(size_t starting_block, size_t cnt, block_sector_t *
 bool inode_create(block_sector_t sector, off_t length)
 {
   struct inode_disk *disk_inode = NULL;
+  // struct inode_disk disk_inode;
   bool success = false;
 
   ASSERT(length >= 0);
@@ -278,7 +285,7 @@ bool inode_create(block_sector_t sector, off_t length)
       }
       success = true;
     }
-    free(disk_inode);
+  free(disk_inode);
   }
   return success;
 }
@@ -359,6 +366,18 @@ void inode_close(struct inode *inode)
       // free_map_release(inode->sector, 1);
       // free_map_release(inode->data.start,
       //                  bytes_to_sectors(inode->data.length));
+      struct inode_disk *inode_disk = NULL;
+      inode_disk = calloc(1, sizeof *inode_disk);
+      buffer_cache_read(fs_device, inode->sector, inode_disk, 0, BLOCK_SECTOR_SIZE);
+      block_sector_t last_sector = pos_to_sector_idx(inode_disk->length);
+      block_sector_t indirect_pointers[POINTERS_IN_SECTOR];
+      if (last_sector >= 12 + POINTERS_IN_SECTOR)
+      {
+        buffer_cache_read(fs_device, inode_disk->pointers[13], indirect_pointers, 0, BLOCK_SECTOR_SIZE);
+      }
+      cleanup_errors(last_sector + 1, inode_disk->pointers, indirect_pointers);
+      free(inode_disk);
+      free_map_release(inode->sector, 1);
     }
 
     free(inode);
@@ -445,24 +464,36 @@ off_t inode_write_at(struct inode *inode, const void *buffer_, off_t size,
   if (inode->deny_write_cnt)
     return 0;
 
-  block_sector_t starting_sector = pos_to_sector_idx(inode_length(inode));
+  off_t length = inode_length(inode);
+  block_sector_t starting_sector = pos_to_sector_idx(length);
   // printf("starting sector for byte %d: %d\n", inode_length(inode), starting_sector);
   off_t final_byte = offset + size;
   block_sector_t final_write_sector = pos_to_sector_idx(final_byte);
   // printf("final write sector for byte %d: %d\n", final_byte, final_write_sector);
-  if (final_write_sector > starting_sector)
+  if (final_write_sector > starting_sector || (length == 0 && size != 0))
   {
     printf("NEED TO EXTEND\n");
-    struct inode_disk inode_disk;
-    for (int i = 0; i < 10; i++)
-      printf("%d\n", i);
-    buffer_cache_read(fs_device, inode->sector, &inode_disk, 0, BLOCK_SECTOR_SIZE);
-    if (!allocate_sectors(starting_sector + 1, final_write_sector - starting_sector, inode_disk.pointers))
+    struct inode_disk *inode_disk = NULL;
+    inode_disk = calloc(1, sizeof *inode_disk);
+    buffer_cache_read(fs_device, inode->sector, inode_disk, 0, BLOCK_SECTOR_SIZE);
+    if (length != 0)
     {
-      printf("allocated\n");
+      if (!allocate_sectors(starting_sector + 1, final_write_sector - starting_sector, inode_disk->pointers))
+      {
+        free(inode_disk);
+        return 0;
+      }    
     }
-      return 0; // TODO: figure out of we need to write as much as we can if not enough space to extend file all the way
-    buffer_cache_write(fs_device, inode->sector, &inode_disk, 0, BLOCK_SECTOR_SIZE);
+    else
+    {
+      if (!allocate_sectors(starting_sector, (final_write_sector - starting_sector) + 1, inode_disk->pointers))
+      {
+        free(inode_disk);
+        return 0;
+      }
+    }
+    buffer_cache_write(fs_device, inode->sector, inode_disk, 0, BLOCK_SECTOR_SIZE);
+    free(inode_disk);
   }
   
 
@@ -542,7 +573,10 @@ void inode_allow_write(struct inode *inode)
 /* Returns the length, in bytes, of INODE's data. */
 off_t inode_length(const struct inode *inode)
 {
-  struct inode_disk inode_disk;
-  buffer_cache_read(fs_device, inode->sector, &inode_disk, 0, BLOCK_SECTOR_SIZE);
-  return inode_disk.length;
+  struct inode_disk *inode_disk = NULL;
+  inode_disk = calloc(1, sizeof *inode_disk);
+  buffer_cache_read(fs_device, inode->sector, inode_disk, 0, BLOCK_SECTOR_SIZE);
+  off_t length = inode_disk->length;
+  free(inode_disk);
+  return length;
 }

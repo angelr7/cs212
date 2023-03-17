@@ -21,6 +21,15 @@
 //     struct lock lock;
 //   };
 
+// struct read_ahead_struct {
+//   block_sector_t sector_id; 
+//   struct list_elem elem;
+// };
+
+// static struct list read_ahead_ids;
+// static struct condition read_ahead;
+// static struct lock read_ahead_lock;
+
 static struct cache_entry **buffer_cache;
 static struct bitmap *used_map;
 static struct lock searching_lock;
@@ -30,6 +39,7 @@ static struct cache_entry *find_cache_entry(block_sector_t);
 static int read_in_sector(struct block *, block_sector_t);
 static bool write_out_sector(struct block *, block_sector_t, struct cache_entry *);
 static void flush_thread_func(void *);
+static void read_ahead_thread_func(void *);
 
 void
 buffer_cache_init(void)
@@ -38,26 +48,41 @@ buffer_cache_init(void)
   used_map = bitmap_create(BUFFER_CACHE_SIZE);
   evict_idx = 0;
   lock_init(&searching_lock);
+  lock_init(&read_ahead_lock);
+  list_init(&read_ahead_ids);
+  cond_init(&read_ahead);
+
   for (int i = 0; i < BUFFER_CACHE_SIZE; i++)
   {
     buffer_cache[i] = malloc(sizeof(struct cache_entry));
     lock_init(&buffer_cache[i]->lock);
   }
+
   thread_create("flush thread", 32, flush_thread_func, NULL);
+  thread_create("read-ahead thread", 32, read_ahead_thread_func, NULL);
 }
 
-// static void
-// read_ahead_thread_func(void *AUX)
-// {
-//   // TODO: figure out if next sector of file exists
-//   int sector_idx = (int)AUX;
-//   lock_acquire(&searching_lock);
-//   struct cache_entry *entry = find_cache_entry(sector_idx);
-//   if (entry == NULL)
-//     read_in_sector(block, sector_idx);
-//   else
-//     lock_release(&searching_lock);
-// }
+static void
+read_ahead_thread_func(void *AUX UNUSED)
+{
+  while (true) {
+    lock_acquire(&read_ahead_lock);
+    cond_wait(&read_ahead, &read_ahead_lock);
+    struct list_elem *list_elem = NULL;
+    if (!list_empty(&read_ahead_ids)) 
+      list_elem = list_pop_front(&read_ahead_ids);
+
+    if (list_elem != NULL) {
+      block_sector_t sector_id = list_entry(list_elem, struct read_ahead_struct, elem)->sector_id;
+      struct cache_entry *entry = buffer_cache_read(fs_device, sector_id, NULL, 0, 0);
+      lock_acquire(&entry->lock);
+      entry->num_active--;
+      lock_release(&entry->lock);
+    }
+
+    lock_release(&read_ahead_lock);
+  }
+}
 
 void *
 buffer_cache_read(struct block *block, block_sector_t sector_idx, void *buffer, int sector_ofs, int size)

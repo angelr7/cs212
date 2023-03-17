@@ -462,8 +462,22 @@ off_t inode_read_at(struct inode *inode, void *buffer_, off_t size, off_t offset
     if (chunk_size <= 0)
       break;
 
+    if (size - chunk_size > 0) {
+      lock_acquire(&inode->length_lock);
+      off_t inode_len = inode_length(inode);
+      lock_release(&inode->length_lock);
+      block_sector_t sector_idx = byte_to_sector(inode, offset + chunk_size, inode_len);
+      struct read_ahead_struct *read_ahead_struct = malloc(sizeof(struct read_ahead_struct *));
+      read_ahead_struct->sector_id = sector_idx;
+      list_push_back(&read_ahead_ids, &read_ahead_struct->elem);
+      lock_acquire(&read_ahead_lock);
+      cond_broadcast(&read_ahead, &read_ahead_lock);      
+      lock_acquire(&read_ahead_lock);
+    }
+    
     buffer_cache_read(fs_device, sector_idx, buffer + bytes_read,
                       sector_ofs, chunk_size);
+
 
     // if (sector_ofs == 0 && chunk_size == BLOCK_SECTOR_SIZE)
     //   {

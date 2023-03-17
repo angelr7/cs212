@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <list.h>
 
 #define BUFFER_CACHE_SIZE 64
 
@@ -62,7 +63,7 @@ buffer_cache_init(void)
   thread_create("read-ahead thread", 32, read_ahead_thread_func, NULL);
 }
 
-static void
+void
 read_ahead_thread_func(void *AUX UNUSED)
 {
   while (true) {
@@ -73,11 +74,13 @@ read_ahead_thread_func(void *AUX UNUSED)
       list_elem = list_pop_front(&read_ahead_ids);
 
     if (list_elem != NULL) {
-      block_sector_t sector_id = list_entry(list_elem, struct read_ahead_struct, elem)->sector_id;
+      struct read_ahead_struct *read_ahead_struct = list_entry(list_elem, struct read_ahead_struct, elem);
+      block_sector_t sector_id = read_ahead_struct->sector_id;
       struct cache_entry *entry = buffer_cache_read(fs_device, sector_id, NULL, 0, 0);
       lock_acquire(&entry->lock);
       entry->num_active--;
       lock_release(&entry->lock);
+      free(read_ahead_struct);
     }
 
     lock_release(&read_ahead_lock);

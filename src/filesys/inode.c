@@ -466,13 +466,14 @@ off_t inode_read_at(struct inode *inode, void *buffer_, off_t size, off_t offset
       lock_acquire(&inode->length_lock);
       off_t inode_len = inode_length(inode);
       lock_release(&inode->length_lock);
-      block_sector_t sector_idx = byte_to_sector(inode, offset + chunk_size, inode_len);
-      struct read_ahead_struct *read_ahead_struct = malloc(sizeof(struct read_ahead_struct *));
-      read_ahead_struct->sector_id = sector_idx;
+      
+      block_sector_t sector_id = byte_to_sector(inode, offset + chunk_size, inode_len);
+      struct read_ahead_struct *read_ahead_struct = malloc(sizeof(struct read_ahead_struct));
+      read_ahead_struct->sector_id = sector_id;
+      lock_acquire(&read_ahead_lock);
       list_push_back(&read_ahead_ids, &read_ahead_struct->elem);
-      lock_acquire(&read_ahead_lock);
-      cond_broadcast(&read_ahead, &read_ahead_lock);      
-      lock_acquire(&read_ahead_lock);
+      cond_signal(&read_ahead, &read_ahead_lock);      
+      lock_release(&read_ahead_lock);
     }
     
     buffer_cache_read(fs_device, sector_idx, buffer + bytes_read,

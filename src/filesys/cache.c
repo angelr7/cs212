@@ -11,15 +11,15 @@
 
 #define BUFFER_CACHE_SIZE 64
 
-struct cache_entry
-  {
-    block_sector_t sector_idx;
-    bool accessed;
-    bool dirty;
-    int num_active;
-    unsigned char data[BLOCK_SECTOR_SIZE];
-    struct lock lock;
-  };
+// struct cache_entry
+//   {
+//     block_sector_t sector_idx;
+//     bool accessed;
+//     bool dirty;
+//     int num_active;
+//     unsigned char data[BLOCK_SECTOR_SIZE];
+//     struct lock lock;
+//   };
 
 static struct cache_entry **buffer_cache;
 static struct bitmap *used_map;
@@ -59,7 +59,7 @@ buffer_cache_init(void)
 //     lock_release(&searching_lock);
 // }
 
-void
+void *
 buffer_cache_read(struct block *block, block_sector_t sector_idx, void *buffer, int sector_ofs, int size)
 {
   lock_acquire(&searching_lock);
@@ -74,13 +74,20 @@ buffer_cache_read(struct block *block, block_sector_t sector_idx, void *buffer, 
     entry->num_active++;
     lock_release(&searching_lock);
   }
-  // acquire lock to ensure that sector has been read in if wasn't in cache
+
   lock_acquire(&entry->lock);
   lock_release(&entry->lock);
+
+  if (buffer == NULL) {
+    return entry;
+  }
+
+  // acquire lock to ensure that sector has been read in if wasn't in cache
   memcpy(buffer, entry->data + sector_ofs, size);
   lock_acquire(&entry->lock);
   entry->num_active--;
   lock_release(&entry->lock);
+  return NULL;
   // thread_create read ahead
 }
 

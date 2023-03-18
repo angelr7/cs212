@@ -462,7 +462,8 @@ off_t inode_read_at(struct inode *inode, void *buffer_, off_t size, off_t offset
     if (chunk_size <= 0)
       break;
 
-    if (size - chunk_size > 0) {
+    if (size - chunk_size > 0) 
+    {
       lock_acquire(&inode->length_lock);
       off_t inode_len = inode_length(inode);
       lock_release(&inode->length_lock);
@@ -524,6 +525,7 @@ off_t inode_write_at(struct inode *inode, const void *buffer_, off_t size,
   if (inode->deny_write_cnt)
     return 0;
 
+  lock_acquire(&inode->eof_lock);
   lock_acquire(&inode->length_lock);
   off_t length = inode_length(inode);
   lock_release(&inode->length_lock);
@@ -541,7 +543,6 @@ off_t inode_write_at(struct inode *inode, const void *buffer_, off_t size,
   {
     // printf("NEED TO EXTEND\n");
     // inode_disk = calloc(1, sizeof *inode_disk);
-    lock_acquire(&inode->eof_lock);
     entry =  buffer_cache_read(fs_device, inode->sector, NULL, 0, 0);
     inode_disk = (struct inode_disk *)entry->data;
     if (length != 0)
@@ -567,6 +568,9 @@ off_t inode_write_at(struct inode *inode, const void *buffer_, off_t size,
     // buffer_cache_write(fs_device, inode->sector, inode_disk, 0, BLOCK_SECTOR_SIZE);
     // free(inode_disk);
   }
+  if(!extended_file)
+    lock_release(&inode->eof_lock);
+
   
   length = (length > offset + size) ? length : offset + size;
 

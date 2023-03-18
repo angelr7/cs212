@@ -210,7 +210,7 @@ bool
 lock_try_acquire (struct lock *lock)
 {
   bool success;
-
+  printf("Acquire %s\n",lock->holder->name);
   ASSERT (lock != NULL);
   ASSERT (!lock_held_by_current_thread (lock));
 
@@ -228,9 +228,9 @@ lock_try_acquire (struct lock *lock)
 void
 lock_release (struct lock *lock) 
 {
+  printf("Release %s\n",lock->holder->name);
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
-
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }

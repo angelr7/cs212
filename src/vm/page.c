@@ -94,15 +94,15 @@ bool load_page(void *fault_addr)
     }
     if (p->memory_flag == IN_DISK || p->memory_flag == ALL_ZEROES)
     {
-        lock_acquire(&filesys_lock);
+        // lock_acquire(&filesys_lock);
         if (file_read_at(p->file, kpage, p->page_read_bytes, p->file_ofs) 
             != (int)p->page_read_bytes)
         {
             free_frame(kpage);
-            lock_release(&filesys_lock);
+            // lock_release(&filesys_lock);
             return false;
         }
-        lock_release(&filesys_lock);
+        // lock_release(&filesys_lock);
         memset(kpage + p->page_read_bytes, 0, p->page_zero_bytes);
     }
     else if (p->memory_flag == IN_SWAP)
@@ -183,10 +183,10 @@ void page_free(struct page *page_entry, bool delete_entry)
         if (page_entry->mapid != NO_MAPID 
             && pagedir_is_dirty(thread_current()->pagedir, page_entry->virtual_addr))
         {
-            lock_acquire(&filesys_lock);
+            // lock_acquire(&filesys_lock);
             file_write_at(page_entry->file, page_entry->virtual_addr,
                           page_entry->page_read_bytes, page_entry->file_ofs);
-            lock_release(&filesys_lock);
+            // lock_release(&filesys_lock);
         }
         pagedir_clear_page(thread_current()->pagedir, page_entry->virtual_addr);
         free_frame(page_entry->physical_addr);

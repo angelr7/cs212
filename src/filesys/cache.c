@@ -34,6 +34,7 @@
 static struct cache_entry **buffer_cache;
 static struct bitmap *used_map;
 static struct lock searching_lock;
+
 static int evict_idx;
 
 static struct cache_entry *find_cache_entry(block_sector_t);
@@ -68,10 +69,11 @@ read_ahead_thread_func(void *AUX UNUSED)
 {
   while (true) {
     lock_acquire(&read_ahead_lock);
-    cond_wait(&read_ahead, &read_ahead_lock);
+    while (list_empty(&read_ahead_ids)) 
+      cond_wait(&read_ahead, &read_ahead_lock);
     struct list_elem *list_elem = NULL;
-    if (!list_empty(&read_ahead_ids)) 
-      list_elem = list_pop_front(&read_ahead_ids);
+    list_elem = list_pop_front(&read_ahead_ids);
+    lock_release(&read_ahead_lock);
 
     if (list_elem != NULL) {
       struct read_ahead_struct *read_ahead_struct = list_entry(list_elem, struct read_ahead_struct, elem);
@@ -83,7 +85,6 @@ read_ahead_thread_func(void *AUX UNUSED)
       free(read_ahead_struct);
     }
 
-    lock_release(&read_ahead_lock);
   }
 }
 

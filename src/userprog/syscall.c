@@ -375,9 +375,9 @@ static void
 create(const char *file, unsigned initial_size, struct intr_frame *f)
 {
   verify_string(file);
-  lock_acquire(&filesys_lock);
+  // lock_acquire(&filesys_lock);
   bool success = filesys_create(file, initial_size);
-  lock_release(&filesys_lock);
+  // lock_release(&filesys_lock);
   f->eax = success;
 }
 
@@ -386,9 +386,9 @@ static void
 remove(const char *file, struct intr_frame *f)
 {
   verify_string(file);
-  lock_acquire(&filesys_lock);
+  // lock_acquire(&filesys_lock);
   bool success = filesys_remove(file);
-  lock_release(&filesys_lock);
+  // lock_release(&filesys_lock);
   f->eax = success;
 }
 
@@ -397,9 +397,9 @@ static void
 open(const char *file, struct intr_frame *f)
 {
   verify_string(file);
-  lock_acquire(&filesys_lock);
+  // lock_acquire(&filesys_lock);
   struct file *opened_file = filesys_open(file);
-  lock_release(&filesys_lock);
+  // lock_release(&filesys_lock);
   if (opened_file == NULL)
   {
     f->eax = -1;
@@ -427,9 +427,9 @@ filesize(int fd, struct intr_frame *f)
     f->eax = -1;
     return;
   }
-  lock_acquire(&filesys_lock);
+  // lock_acquire(&filesys_lock);
   int size = file_length(fd_elem->file);
-  lock_release(&filesys_lock);
+  // lock_release(&filesys_lock);
   f->eax = size;
 }
 
@@ -453,9 +453,9 @@ read(int fd, void *buffer, unsigned length, struct intr_frame *f)
     f->eax = -1;
     return;
   }
-  lock_acquire(&filesys_lock);
+  // lock_acquire(&filesys_lock);
   int bytes_read = file_read(fd_elem->file, buffer, length);
-  lock_release(&filesys_lock);
+  // lock_release(&filesys_lock);
   f->eax = bytes_read;
   return;
 }
@@ -479,9 +479,9 @@ write(int fd, const void *buffer, unsigned int length, struct intr_frame *f)
     f->eax = -1;
     return;
   }
-  lock_acquire(&filesys_lock);
+  // lock_acquire(&filesys_lock);
   int bytes_written = file_write(fd_elem->file, buffer, length);
-  lock_release(&filesys_lock);
+  // lock_release(&filesys_lock);
   f->eax = bytes_written;
 }
 
@@ -494,9 +494,9 @@ seek(int fd, unsigned position)
   {
     return;
   }
-  lock_acquire(&filesys_lock);
+  // lock_acquire(&filesys_lock);
   file_seek(fd_elem->file, position);
-  lock_release(&filesys_lock);
+  // lock_release(&filesys_lock);
 }
 
 /*Tell */
@@ -509,9 +509,9 @@ tell(int fd, struct intr_frame *f)
     f->eax = -1;
     return;
   }
-  lock_acquire(&filesys_lock);
+  // lock_acquire(&filesys_lock);
   int position = file_tell(fd_elem->file);
-  lock_release(&filesys_lock);
+  // lock_release(&filesys_lock);
   f->eax = position;
 }
 
@@ -527,9 +527,9 @@ close(int fd)
   fd_elem->close_called = true;
   if (fd_elem->num_mappings > 0)
     return;
-  lock_acquire(&filesys_lock);
+  // lock_acquire(&filesys_lock);
   file_close(fd_elem->file);
-  lock_release(&filesys_lock);
+  // lock_release(&filesys_lock);
   list_remove(&fd_elem->elem);
   free(fd_elem);
 }
@@ -557,9 +557,9 @@ mmap(int fd, void *addr, struct intr_frame *f)
     return;
   }
 
-  lock_acquire(&filesys_lock);
+  // lock_acquire(&filesys_lock);
   int size = file_length(fd_elem->file);
-  lock_release(&filesys_lock);
+  // lock_release(&filesys_lock);
 
   /* if the size of the file is 0, fail */ 
   if (size == 0)

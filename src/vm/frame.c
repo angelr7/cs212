@@ -96,9 +96,9 @@ static size_t evict_algo(void)
     /* Evicting mmapped file pages to file on disk */
     if (p->mapid != NO_MAPID)
     {
-        lock_acquire(&filesys_lock);
+        // lock_acquire(&filesys_lock);
         file_write_at(p->file, p->physical_addr, p->page_read_bytes, p->file_ofs);
-        lock_release(&filesys_lock);
+        // lock_release(&filesys_lock);
         p->memory_flag = IN_DISK;
     }
     p->physical_addr = NULL;

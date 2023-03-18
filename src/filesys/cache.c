@@ -69,10 +69,10 @@ read_ahead_thread_func(void *AUX UNUSED)
 {
   while (true) {
     lock_acquire(&read_ahead_lock);
-    while (list_empty(&read_ahead_ids)) 
+    // while (list_empty(&read_ahead_ids)) 
       cond_wait(&read_ahead, &read_ahead_lock);
     struct list_elem *list_elem = NULL;
-    list_elem = list_pop_front(&read_ahead_ids);
+      list_elem = list_pop_front(&read_ahead_ids);
     lock_release(&read_ahead_lock);
 
     if (list_elem != NULL) {

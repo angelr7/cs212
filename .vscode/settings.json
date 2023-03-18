@@ -5,6 +5,7 @@
         "list.h": "c",
         "file.h": "c",
         "pagedir.h": "c",
-        "*.inc": "c"
+        "*.inc": "c",
+        "thread.h": "c"
     }
 }

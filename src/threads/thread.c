@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "filesys/directory.h"
 #include "lib/user/syscall.h"
 #ifdef USERPROG
 #include "userprog/process.h"
@@ -457,6 +458,9 @@ init_thread(struct thread *t, const char *name, int priority)
   t->cur_mapid = 0;
   list_init(&t->fd_list);
   list_init(&t->mapid_list);
+
+  if (initial_thread->working_dir != NULL)
+    t->working_dir = thread_current()->working_dir;
 
   old_level = intr_disable();
   list_push_back(&all_list, &t->allelem);

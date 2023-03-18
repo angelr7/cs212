@@ -19,10 +19,11 @@
 struct inode_disk
 {
   // block_sector_t start; /* First data sector. */
+  int is_dir;
   off_t length;         /* File size in bytes. */
   block_sector_t pointers[14];
   unsigned magic;       /* Magic number. */
-  uint32_t unused[112]; /* Not used. */
+  uint32_t unused[111]; /* Not used. */
   // struct lock eof_lock;
 };
 
@@ -284,7 +285,7 @@ static bool allocate_sectors(size_t starting_block, size_t cnt, block_sector_t *
    device.
    Returns true if successful.
    Returns false if memory or disk allocation fails. */
-bool inode_create(block_sector_t sector, off_t length)
+bool inode_create(block_sector_t sector, off_t length, bool is_dir)
 {
   struct cache_entry *entry = buffer_cache_read(fs_device, sector, NULL, 0, 0);
   struct inode_disk *disk_inode = (struct inode_disk *)entry->data;
@@ -303,6 +304,7 @@ bool inode_create(block_sector_t sector, off_t length)
   {
     size_t sectors = bytes_to_sectors(length);
     disk_inode->length = length;
+    disk_inode->is_dir = is_dir;
     disk_inode->magic = INODE_MAGIC;
     if (allocate_sectors(0, sectors, disk_inode->pointers))
     {
@@ -359,8 +361,8 @@ inode_open(block_sector_t sector)
   inode->removed = false;
   lock_init(&inode->eof_lock);
   lock_init(&inode->length_lock);
-  // buffer_cache_read(fs_device, inode->sector, &inode->data,
-  //                   0, BLOCK_SECTOR_SIZE);
+  buffer_cache_read(fs_device, inode->sector, &inode->is_dir,
+                    0, sizeof(int));
   // block_read(fs_device, inode->sector, &inode->data);
   return inode;
 }

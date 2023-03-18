@@ -24,9 +24,38 @@ struct dir_entry
 /* Creates a directory with space for ENTRY_CNT entries in the
    given SECTOR.  Returns true if successful, false on failure. */
 bool
-dir_create (block_sector_t sector, size_t entry_cnt)
+dir_create (block_sector_t sector, size_t entry_cnt, struct dir *parent_dir)
 {
-  return inode_create (sector, entry_cnt * sizeof (struct dir_entry));
+  bool success = inode_create (sector, entry_cnt * sizeof (struct dir_entry), true);
+  if (!success)
+    return success;
+  
+  if (sector == ROOT_DIR_SECTOR)
+  {
+    struct dir *root_dir = dir_open_root();
+    success = dir_add(root_dir, ".", ROOT_DIR_SECTOR);
+    if (!success) 
+    {
+      dir_close(root_dir);
+      return success;
+    }
+    success = dir_add(root_dir, "..", ROOT_DIR_SECTOR);
+    dir_close(root_dir);
+    return success;
+  }
+  struct inode *cur_inode = inode_open(sector);
+  struct dir *cur_dir = dir_open(cur_inode);
+  success = dir_add(cur_dir, ".", sector);
+  if (!success)
+  {
+    inode_close(cur_inode);
+    dir_close(cur_dir);
+    return success;
+  }
+  success = dir_add(cur_dir, "..", parent_dir->inode->sector);
+  inode_close(cur_inode);
+  dir_close(cur_dir);
+  return success;
 }
 
 /* Opens and returns the directory for the given INODE, of which
@@ -35,7 +64,7 @@ struct dir *
 dir_open (struct inode *inode) 
 {
   struct dir *dir = calloc (1, sizeof *dir);
-  if (inode != NULL && dir != NULL)
+  if (inode != NULL && inode->is_dir && dir != NULL)
     {
       dir->inode = inode;
       dir->pos = 0;

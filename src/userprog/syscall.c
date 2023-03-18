@@ -1,6 +1,7 @@
 #include "devices/input.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
+#include "filesys/free-map.h"
 #include "userprog/syscall.h"
 #include "userprog/pagedir.h"
 #include <stdio.h>
@@ -22,6 +23,7 @@ typedef int mapid_t;
 static void syscall_handler(struct intr_frame *);
 static void verify_pointer(const void *pointer, int size);
 static void verify_writable(void *pointer, int size);
+static bool parse_path (const char *path, struct dir **last_dir, char *last_name);
 static void halt(void) NO_RETURN;
 void exit_handler(int status);
 static void exec(const char *file, struct intr_frame *f);
@@ -38,8 +40,8 @@ static void close(int fd);
 static void mmap(int fd, void *addr, struct intr_frame *f);
 static void munmap(mapid_t mapping);
 static void unpin(void *pointer, int size);
-static bool chdir (const char *dir, struct intr_frame *f);
-static bool mkdir (const char *dir, struct intr_frame *f);
+static void chdir (const char *dir, struct intr_frame *f);
+static void mkdir (const char *dir, struct intr_frame *f);
 static bool readdir (int fd, char *name);
 static bool isdir (int fd);
 static int inumber (int fd);
@@ -387,7 +389,7 @@ create(const char *file, unsigned initial_size, struct intr_frame *f)
 {
   verify_string(file);
   // lock_acquire(&filesys_lock);
-  bool success = filesys_create(file, initial_size);
+  bool success = filesys_create(file, initial_size, false);
   // lock_release(&filesys_lock);
   f->eax = success;
 }
@@ -658,10 +660,14 @@ munmap(mapid_t mapping)
 
 /* Changes the current working directory of the process to dir, which may be relative
  or absolute. Returns true if successful, false on failure. */
-static bool
+static void
 chdir (const char *dir, struct intr_frame *f)
 {
   verify_string(dir);
+
+  // struct dir *cur_dir;
+
+
   struct dir *initial_working_dir = thread_current()->working_dir;
   struct dir *cur_dir = initial_working_dir;
   if (dir[0] == "/")
@@ -669,8 +675,8 @@ chdir (const char *dir, struct intr_frame *f)
     cur_dir = dir_open_root();
   }
 
-  char *dir_copy;
-  strlcpy(dir_copy, dir, strlen(dir));
+  char dir_copy[strlen(dir) + 1];
+  strlcpy(dir_copy, dir, strlen(dir) + 1);
   char *token, *save_ptr;
 
   for (token = strtok_r (dir_copy, "/", &save_ptr); token != NULL;
@@ -684,8 +690,7 @@ chdir (const char *dir, struct intr_frame *f)
       f->eax = false;
       return;
     }
-    struct dir *prev_dir = cur_dir;
-    dir_close(prev_dir);
+    dir_close(cur_dir);
     cur_dir = dir_open(inode);
     if (cur_dir == NULL)
     {
@@ -698,58 +703,69 @@ chdir (const char *dir, struct intr_frame *f)
   return;
 }
 
-static bool
+static void
 mkdir (const char *dir, struct intr_frame *f)
 {
-  verify_string(dir);
-  if (strlen(dir) == 0)
+  // verify_string(dir);
+  // if (strlen(dir) == 0)
+  // {
+  //   f->eax = false;
+  //   return;
+  // }
+
+  struct dir *cur_dir;
+  char *last_name[NAME_MAX + 1];
+  if (!parse_path(dir, &cur_dir, last_name))
   {
     f->eax = false;
     return;
   }
-  struct dir *initial_working_dir = thread_current()->working_dir;
-  struct dir *cur_dir = initial_working_dir;
-  if (dir[0] == "/")
-  {
-    cur_dir = dir_open_root();
-  }
+  printf("path parsed\n");
+  printf("%p, last name: %s\n", cur_dir, last_name);
 
-  char *dir_copy;
-  strlcpy(dir_copy, dir, strlen(dir));
-  char *token, *save_ptr, *last_name;
 
-  token = strtok_r (last_name, "/", &save_ptr);
-  while (token != NULL)
-  {
-    if (strlen(token) == 0) 
-      continue;
-    strlcpy(last_name, token, strlen(token));
-    token = strtok_r (last_name, "/", &save_ptr);
-    if (token == NULL) 
-      break;
-    struct inode *inode;
-    if (!dir_lookup(cur_dir, last_name, &inode) && cur_dir != initial_working_dir)
-    {
-      dir_close(cur_dir);
-      f->eax = false;
-      return;
-    }
-    struct dir *prev_dir = cur_dir;
-    dir_close(prev_dir);
 
-    cur_dir = dir_open(inode);
-    if (cur_dir == NULL)
-    {
-      f->eax = false;
-      return;
-    }
-  }
+  // if (dir[0] == "/")
+  //   cur_dir = dir_open_root();
+  // else
+  //   cur_dir = dir_reopen(thread_current()->working_dir);
 
+  // char *dir_copy;
+  // strlcpy(dir_copy, dir, strlen(dir));
+  // char *token, *save_ptr, *last_name;
+
+  // token = strtok_r (last_name, "/", &save_ptr);
+  // while (token != NULL)
+  // {
+  //   if (strlen(token) == 0) 
+  //     continue;
+  //   strlcpy(last_name, token, strlen(token));
+  //   token = strtok_r (last_name, "/", &save_ptr);
+  //   if (token == NULL) 
+  //     break;
+  //   struct inode *inode; 
+
+  //   if (!dir_lookup(cur_dir, last_name, &inode))
+  //   {
+  //     dir_close(cur_dir);
+  //     f->eax = false;
+  //     return;
+  //   }
+
+  //   dir_close(cur_dir);
+  //   cur_dir = dir_open(inode);
+  //   if (cur_dir == NULL)
+  //   {
+  //     f->eax = false;
+  //     return;
+  //   }
+  // }
+
+  // attemping to create new directory
   struct inode *inode;
   if (dir_lookup (cur_dir, last_name, &inode))
   {
-    // if (cur_dir != initial_working_dir)
-    //   dir_close(cur_dir);
+    dir_close(cur_dir);
     f->eax = false;
     return;
   }
@@ -757,16 +773,17 @@ mkdir (const char *dir, struct intr_frame *f)
   block_sector_t inode_sector = 0;
   bool success = (dir != NULL
                   && free_map_allocate (1, &inode_sector)
-                  && inode_create (inode_sector, INITIAL_DIR_SIZE, true)
+                  && dir_create (inode_sector, INITIAL_DIR_SIZE, cur_dir)
                   && dir_add (cur_dir, last_name, inode_sector));
-  if (!success && inode_sector != 0) 
+  if (!success) 
   {
-    free_map_release (inode_sector, 1);
+    if (inode_sector != 0)
+      free_map_release (inode_sector, 1);
     dir_close(cur_dir);
     f->eax = false;
     return;
   }
-
+  dir_close(cur_dir);
   f->eax = true;
   return;
 }
@@ -787,4 +804,64 @@ static int
 inumber (int fd)
 {
 
+}
+
+static bool
+parse_path (const char *path, struct dir **last_dir, char *last_name)
+{
+  verify_string(path);
+
+  if (strlen(path) == 0)
+    return false;
+
+  struct dir *cur_dir;
+  if (path[0] == "/")
+    cur_dir = dir_open_root();
+  else
+    cur_dir = dir_reopen(thread_current()->working_dir);
+
+  char *dir_copy[strlen(path) + 1];
+  strlcpy(dir_copy, path, strlen(path) + 1);
+  char *token, *save_ptr;
+
+  printf("path: %s\n", path);
+  token = strtok_r (dir_copy, "/", &save_ptr);
+  printf("token: %s\n", token);
+  while (token != NULL)
+  {
+    if (strlen(token) == 0) 
+      continue;
+    printf("token before copy: %s\n", token);
+    strlcpy(last_name, token, strlen(token) + 1);
+    printf("last name after copy: %s\n", last_name);
+
+
+    token = strtok_r (NULL, "/", &save_ptr);
+    printf("token after strtok: %s\n", token);
+    if (token == NULL) 
+    {
+      printf("token null breaking\n");
+      break;
+    }
+    struct inode *inode; 
+
+    if (!dir_lookup(cur_dir, last_name, &inode))
+    {
+      printf("dir lookup failed\n");
+      dir_close(cur_dir);
+      return false;
+    }
+
+    dir_close(cur_dir);
+    cur_dir = dir_open(inode);
+    if (cur_dir == NULL)
+      return false;
+    printf("last name: %s\n", last_name);
+    printf("token: %s\n", token);
+  }
+
+  printf("last name: %s\n", last_name);
+  printf("token: %s\n", token);
+  *last_dir = cur_dir;
+  return true;
 }

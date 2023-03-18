@@ -48,12 +48,11 @@ dir_create (block_sector_t sector, size_t entry_cnt, struct dir *parent_dir)
   success = dir_add(cur_dir, ".", sector);
   if (!success)
   {
-    inode_close(cur_inode);
     dir_close(cur_dir);
     return success;
   }
   success = dir_add(cur_dir, "..", parent_dir->inode->sector);
-  inode_close(cur_inode);
+  // inode_close(cur_inode);
   dir_close(cur_dir);
   return success;
 }

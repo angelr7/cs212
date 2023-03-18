@@ -460,7 +460,8 @@ init_thread(struct thread *t, const char *name, int priority)
   list_init(&t->mapid_list);
 
   if (initial_thread->working_dir != NULL)
-    t->working_dir = thread_current()->working_dir;
+    t->working_dir = dir_reopen(thread_current()->working_dir);
+    // t->working_dir = thread_current()->working_dir;
 
   old_level = intr_disable();
   list_push_back(&all_list, &t->allelem);

@@ -19,8 +19,8 @@
 struct inode_disk
 {
   // block_sector_t start; /* First data sector. */
-  int is_dir;
   off_t length;         /* File size in bytes. */
+  int is_dir;
   block_sector_t pointers[14];
   unsigned magic;       /* Magic number. */
   uint32_t unused[111]; /* Not used. */
@@ -362,7 +362,7 @@ inode_open(block_sector_t sector)
   lock_init(&inode->eof_lock);
   lock_init(&inode->length_lock);
   buffer_cache_read(fs_device, inode->sector, &inode->is_dir,
-                    0, sizeof(int));
+                    sizeof(block_sector_t), sizeof(int));
   // block_read(fs_device, inode->sector, &inode->data);
   return inode;
 }

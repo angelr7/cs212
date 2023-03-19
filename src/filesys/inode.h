@@ -12,6 +12,7 @@ struct inode
 {
   struct list_elem elem;  /* Element in inode list. */
   bool is_dir;
+  int num_entries;
   block_sector_t sector;  /* Sector number of disk location. */
   int open_cnt;           /* Number of openers. */
   bool removed;           /* True if deleted, false otherwise. */

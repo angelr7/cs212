@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <list.h>
+#include "filesys/cache.h"
 #include "filesys/filesys.h"
 #include "filesys/inode.h"
 #include "threads/malloc.h"
@@ -20,6 +21,40 @@ struct dir_entry
     char name[NAME_MAX + 1];            /* Null terminated file name. */
     bool in_use;                        /* In use or free? */
   };
+
+static int
+get_num_entries(struct inode *inode) 
+{
+  int num_entries = 0;
+  buffer_cache_read(fs_device, inode->sector, &num_entries, 
+                    sizeof(int) * 16, sizeof(int));
+  return num_entries;
+}
+
+static void
+increment_num_entries(struct inode *inode) 
+{
+  int num_entries = 0;
+  buffer_cache_read(fs_device, inode->sector, &num_entries, 
+                    sizeof(int) * 16, sizeof(int));
+  num_entries++;
+  buffer_cache_write(fs_device, inode->sector, &num_entries, 
+                    sizeof(int) * 16, sizeof(int));
+  return;
+}
+
+static void
+decrement_num_entries(struct inode *inode) 
+{
+  int num_entries = 0;
+  buffer_cache_read(fs_device, inode->sector, &num_entries, 
+                    sizeof(int) * 16, sizeof(int));
+  num_entries--;
+  buffer_cache_write(fs_device, inode->sector, &num_entries, 
+                    sizeof(int) * 16, sizeof(int));
+  return;
+}
+
 
 /* Creates a directory with space for ENTRY_CNT entries in the
    given SECTOR.  Returns true if successful, false on failure. */
@@ -203,6 +238,8 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
   success = inode_write_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
 
  done:
+  if (success && (strcmp(name, ".") != 0 && strcmp(name, "..") != 0))
+    increment_num_entries(dir->inode);
   return success;
 }
 
@@ -226,8 +263,15 @@ dir_remove (struct dir *dir, const char *name)
 
   /* Open inode. */
   inode = inode_open (e.inode_sector);
-  if (inode == NULL)
+  if (inode == NULL || inode->sector == ROOT_DIR_SECTOR)
     goto done;
+
+  if (inode->is_dir)
+  {
+    int num_entries = get_num_entries(inode);
+    if (num_entries > 0 || inode->open_cnt > 0)
+      goto done;
+  }
 
   /* Erase directory entry. */
   e.in_use = false;
@@ -239,6 +283,8 @@ dir_remove (struct dir *dir, const char *name)
   success = true;
 
  done:
+  if (success)
+    decrement_num_entries(inode);
   inode_close (inode);
   return success;
 }
@@ -256,7 +302,7 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
       dir->pos += sizeof e;
       if (e.in_use)
         {
-          strlcpy (name, e.name, NAME_MAX + 1);
+          strlcpy (name, e.name, strlen(e.name) + 1);
           return true;
         } 
     }

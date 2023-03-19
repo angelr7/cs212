@@ -22,8 +22,9 @@ struct inode_disk
   off_t length;         /* File size in bytes. */
   int is_dir;
   block_sector_t pointers[14];
+  int num_entries;
   unsigned magic;       /* Magic number. */
-  uint32_t unused[111]; /* Not used. */
+  uint32_t unused[110]; /* Not used. */
   // struct lock eof_lock;
 };
 
@@ -305,6 +306,7 @@ bool inode_create(block_sector_t sector, off_t length, bool is_dir)
     size_t sectors = bytes_to_sectors(length);
     disk_inode->length = length;
     disk_inode->is_dir = is_dir;
+    disk_inode->num_entries = 0;
     disk_inode->magic = INODE_MAGIC;
     if (allocate_sectors(0, sectors, disk_inode->pointers))
     {
@@ -363,7 +365,8 @@ inode_open(block_sector_t sector)
   lock_init(&inode->length_lock);
   buffer_cache_read(fs_device, inode->sector, &inode->is_dir,
                     sizeof(block_sector_t), sizeof(int));
-  // block_read(fs_device, inode->sector, &inode->data);
+  buffer_cache_read(fs_device, inode->sector, &inode->num_entries, 
+                    sizeof(uint32_t) * 16, sizeof(int));
   return inode;
 }
 

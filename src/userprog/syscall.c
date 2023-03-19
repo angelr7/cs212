@@ -870,6 +870,8 @@ parse_path (const char *path, struct dir **last_dir, char *last_name)
 
     if (strlen(token) == 0) 
       continue;
+    if (strlen(token) > (size_t)(NAME_MAX + 1))
+      return false;
     
     // printf("token before copy: %s\n", token);
     strlcpy(last_name, token, strlen(token) + 1);
@@ -905,6 +907,8 @@ parse_path (const char *path, struct dir **last_dir, char *last_name)
 
   // printf("last name: %s\n", last_name);
   // printf("token: %s\n", token);
+  if (last_name == NULL)
+    strlcpy(last_name, '\n', 1);
   *last_dir = cur_dir;
   return true;
 }

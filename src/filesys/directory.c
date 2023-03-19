@@ -269,7 +269,7 @@ dir_remove (struct dir *dir, const char *name)
   if (inode->is_dir)
   {
     int num_entries = get_num_entries(inode);
-    if (num_entries > 0 || inode->open_cnt > 0)
+    if (num_entries > 0 || inode->open_cnt - 1 > 0)
       goto done;
   }
 

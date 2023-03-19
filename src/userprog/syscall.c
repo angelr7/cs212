@@ -90,7 +90,7 @@ syscall_handler(struct intr_frame *f)
     unpin(f->esp + 4, sizeof(uint32_t));
   }
   if (syscall_num == SYS_CREATE || syscall_num == SYS_READ || syscall_num == SYS_WRITE 
-    || syscall_num == SYS_SEEK || syscall_num == SYS_MMAP)
+    || syscall_num == SYS_SEEK || syscall_num == SYS_MMAP || syscall_num == SYS_READDIR)
   {
     verify_pointer(f->esp + 8, sizeof(uint32_t));
     arg2 = *(uint32_t *)(f->esp + 8);

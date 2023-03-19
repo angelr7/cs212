@@ -56,8 +56,12 @@ filesys_create (const char *path, off_t initial_size, bool is_dir)
   if(!parse_path(path, &dir, last_name))
     return false;
   struct inode *inode = NULL;
-  if (dir != NULL)
-    dir_lookup (dir, last_name, &inode);
+  if (dir_lookup (dir, last_name, &inode))
+  {
+    dir_close(dir);
+    inode_close(inode);
+    return false;
+  }
 
   block_sector_t inode_sector = 0;
   // struct dir *dir = dir_open_root ();
@@ -85,19 +89,22 @@ filesys_open (const char *path)
   if(!parse_path(path, &dir, last_name))
     return NULL;
   struct inode *inode = NULL;
-  if (dir != NULL)
-  {
-    if (strlen(last_name) == 0)
-    {
-      struct file *opened = file_open(dir->inode);
-      dir_close(dir);
-      return opened;
-    }
-    else
-      dir_lookup (dir, last_name, &inode);
-  }
-  dir_close (dir);
-  return file_open (inode);
+  dir_lookup(dir, last_name, &inode);
+  dir_close(dir);
+  return file_open(inode);
+
+
+
+  // if (strlen(last_name) == 0)
+  // {
+  //   struct file *opened = file_open(dir->inode);
+  //   dir_close(dir);
+  //   return opened;
+  // }
+  // else
+  //   dir_lookup (dir, last_name, &inode);
+  // dir_close (dir);
+  // return file_open (inode);
 }
 
 /* Deletes the file named NAME.
@@ -110,26 +117,20 @@ filesys_remove (const char *path)
   struct dir *dir;
   char last_name[NAME_MAX + 1];
   if(!parse_path(path, &dir, last_name))
-    return NULL;
-  struct inode *inode = NULL;
-  if (dir != NULL)
-  {
-    if (strlen(last_name) == 0)
-    {
-      if (dir->inode->sector == ROOT_DIR_SECTOR)
-      {
-        dir_close(dir);
-        return false;
-      }
-      bool success = dir_remove (dir, last_name);
-      dir_close(dir);
-      return success;
-    }
-    dir_lookup (dir, last_name, &inode);
-  }
-  bool success = dir != NULL && dir_remove (dir, last_name);
-  dir_close (dir); 
+    return false;
 
+  struct inode *inode = NULL;
+  if (!dir_lookup(dir, last_name, &inode) || 
+      inode->sector == ROOT_DIR_SECTOR ||
+      strcmp(last_name, "..") == 0 || 
+      strcmp(last_name, ".") == 0)
+  {
+    dir_close(dir);
+    return false;
+  }
+
+  bool success = dir_remove(dir, last_name);
+  dir_close(dir);
   return success;
 }
 

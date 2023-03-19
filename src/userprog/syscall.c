@@ -44,7 +44,7 @@ static void munmap(mapid_t mapping);
 static void unpin(void *pointer, int size);
 static void chdir (const char *dir, struct intr_frame *f);
 static void mkdir (const char *dir, struct intr_frame *f);
-static void readdir (int fd, char *name, struct intr_frame *f);
+static void readdir (int fd, char name[NAME_MAX + 1], struct intr_frame *f);
 static void isdir (int fd, struct intr_frame *f);
 static void inumber (int fd, struct intr_frame *f);
 
@@ -164,7 +164,7 @@ syscall_handler(struct intr_frame *f)
     mkdir((const char *)arg1, f);
     break;
   case SYS_READDIR:
-    readdir((int)arg1, (const char *)arg2, f);
+    readdir((int)arg1, (char *)arg2, f);
     break;
   case SYS_ISDIR:
     isdir((int)arg1, f);
@@ -790,7 +790,7 @@ mkdir (const char *dir, struct intr_frame *f)
 }
 
 static void
-readdir (int fd, char *name, struct intr_frame *f)
+readdir (int fd, char name[NAME_MAX + 1], struct intr_frame *f)
 {
   // verify_pointer(name, sizeof(char *));
   struct fd_elem *fd_elem = list_find_fd_elem(thread_current(), fd);
@@ -800,15 +800,25 @@ readdir (int fd, char *name, struct intr_frame *f)
     return;
   }
   struct dir *dir = dir_open(fd_elem->file->inode);
-  name = "";
-  while (strcmp(name, ".") == 0 || strcmp(name, "..") == 0)
+  char *name_copy = malloc(NAME_MAX + 1);
+
+  bool entry_read = false;
+  while (!entry_read || strcmp(name_copy, ".") == 0 || strcmp(name_copy, "..") == 0)
   {
-    if (dir == NULL || !dir_readdir(dir, name))
+    if (dir == NULL || !dir_readdir(dir, name_copy))
     {
       f->eax = false;
+      if (dir != NULL)
+        dir->pos = 0;
+
+      free(name_copy);
       return;
     }
+    entry_read = true;
   }
+
+  strlcpy(name, name_copy, NAME_MAX + 1);
+  free(name_copy);
   f->eax = true;
     return;
 }
@@ -841,18 +851,34 @@ inumber (int fd, struct intr_frame *f)
 
 /* Parses path and populates last_dir with the final open directory and
 last name with the final file or directory name.  Returns true on success*/
- bool
+bool
 parse_path (const char *path, struct dir **last_dir, char *last_name)
 {
+  size_t len = strlen(path);
+  if (len == 0)
+    return false;
 
-  if (strlen(path) == 0)
+  bool non_slash_present = false;
+  for (size_t i = 0; i < len; i++)
+  {
+    if (path[i] != '/')
+    {
+      non_slash_present = true;
+      break;
+    }
+  }
+
+  if (non_slash_present && path[len - 1] == '/')
     return false;
 
   struct dir *cur_dir;
   if (*path == '/')
     cur_dir = dir_open_root();
-  else
+  else if (thread_current()->working_dir == NULL)
+    return false;
+  else 
     cur_dir = dir_reopen(thread_current()->working_dir);
+  
 
   char dir_copy[strlen(path) + 1];
   strlcpy(dir_copy, path, strlen(path) + 1);
@@ -860,6 +886,7 @@ parse_path (const char *path, struct dir **last_dir, char *last_name)
 
   // printf("path: %s\n", path);
   token = strtok_r (dir_copy, "/", &save_ptr);
+  bool is_root = (token == NULL);
   // printf("token: %s\n", token);
   // printf("%s\n",);
   while (token != NULL)
@@ -873,7 +900,6 @@ parse_path (const char *path, struct dir **last_dir, char *last_name)
     strlcpy(last_name, token, strlen(token) + 1);
     // printf("last name after copy: %s\n", last_name);
 
-
     token = strtok_r (NULL, "/", &save_ptr);
     // printf("token after strtok: %s\n", token);
     if (token == NULL) 
@@ -881,8 +907,6 @@ parse_path (const char *path, struct dir **last_dir, char *last_name)
       // printf("token null breaking\n");
       break;
     }
-    if (strlen(token) > (size_t)(NAME_MAX + 1))
-      return false;
 
     struct inode *inode; 
 
@@ -903,8 +927,8 @@ parse_path (const char *path, struct dir **last_dir, char *last_name)
 
   // printf("last name: %s\n", last_name);
   // printf("token: %s\n", token);
-  if (last_name == NULL)
-    strlcpy(last_name, '\n', 1);
+  if (is_root)
+    strlcpy(last_name, ".\0", 2);
   *last_dir = cur_dir;
   return true;
 }

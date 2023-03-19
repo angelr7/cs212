@@ -90,7 +90,7 @@ syscall_handler(struct intr_frame *f)
     unpin(f->esp + 4, sizeof(uint32_t));
   }
   if (syscall_num == SYS_CREATE || syscall_num == SYS_READ || syscall_num == SYS_WRITE 
-    || syscall_num == SYS_SEEK || syscall_num == SYS_MMAP)
+    || syscall_num == SYS_SEEK || syscall_num == SYS_MMAP || syscall_num == SYS_READDIR)
   {
     verify_pointer(f->esp + 8, sizeof(uint32_t));
     arg2 = *(uint32_t *)(f->esp + 8);
@@ -874,8 +874,8 @@ parse_path (const char *path, struct dir **last_dir, char *last_name)
   struct dir *cur_dir;
   if (*path == '/')
     cur_dir = dir_open_root();
-  else if (thread_current()->working_dir == NULL)
-    return false;
+  // else if (thread_current()->working_dir == NULL)
+  //   return false;
   else 
     cur_dir = dir_reopen(thread_current()->working_dir);
   

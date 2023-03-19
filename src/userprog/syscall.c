@@ -57,6 +57,7 @@ struct fd_elem
   struct file *file;
   struct list_elem elem;
   bool is_dir; 
+  struct dir *dir;
 };
 
 struct mapid_elem
@@ -90,7 +91,7 @@ syscall_handler(struct intr_frame *f)
     unpin(f->esp + 4, sizeof(uint32_t));
   }
   if (syscall_num == SYS_CREATE || syscall_num == SYS_READ || syscall_num == SYS_WRITE 
-    || syscall_num == SYS_SEEK || syscall_num == SYS_MMAP)
+    || syscall_num == SYS_SEEK || syscall_num == SYS_MMAP || syscall_num == SYS_READDIR)
   {
     verify_pointer(f->esp + 8, sizeof(uint32_t));
     arg2 = *(uint32_t *)(f->esp + 8);
@@ -442,6 +443,10 @@ open(const char *file, struct intr_frame *f)
   opened_fd->num_mappings = 0;
   opened_fd->close_called = false;
   opened_fd->file = opened_file;
+  opened_fd->is_dir = opened_file->inode->is_dir;
+  opened_fd->dir = NULL;
+  if (opened_fd->is_dir)
+    opened_fd->dir = dir_open(opened_file->inode);
   list_push_back(&t->fd_list, &opened_fd->elem);
   t->cur_fd++;
   f->eax = fd;
@@ -560,6 +565,8 @@ close(int fd)
 
   // lock_acquire(&filesys_lock);
   file_close(fd_elem->file);
+  if (fd_elem->is_dir)
+    dir_close(fd_elem->dir);
   // lock_release(&filesys_lock);
   list_remove(&fd_elem->elem);
   free(fd_elem);
@@ -799,28 +806,33 @@ readdir (int fd, char name[NAME_MAX + 1], struct intr_frame *f)
     f->eax = false;
     return;
   }
-  struct dir *dir = dir_open(fd_elem->file->inode);
-  char *name_copy = malloc(NAME_MAX + 1);
-
-  bool entry_read = false;
-  while (!entry_read || strcmp(name_copy, ".") == 0 || strcmp(name_copy, "..") == 0)
+  struct dir *dir = fd_elem->dir;
+  bool success = dir_readdir(dir, name);
+  while (success && (strcmp(name, ".") == 0 || strcmp(name, "..") == 0))
   {
-    if (dir == NULL || !dir_readdir(dir, name_copy))
+    // printf("%s\n", name);
+    success = dir_readdir(dir, name);
+    if (!success)
     {
       f->eax = false;
-      if (dir != NULL)
-        dir->pos = 0;
-
-      free(name_copy);
       return;
     }
-    entry_read = true;
   }
-
-  strlcpy(name, name_copy, NAME_MAX + 1);
-  free(name_copy);
-  f->eax = true;
-    return;
+  f->eax = success;
+  return;
+  // while (!entry_read || strcmp(name, ".") == 0 || strcmp(name, "..") == 0)
+  // {
+  //   printf("%s\n", name);
+  //   if (dir == NULL || !dir_readdir(dir, name))
+  //   {
+  //     f->eax = false;
+  //     return;
+  //   }
+  //   entry_read = true;
+  // }
+  // printf("return name: %s\n", name);
+  // f->eax = true;
+  //   return;
 }
 
 static void

@@ -876,8 +876,13 @@ parse_path (const char *path, struct dir **last_dir, char *last_name)
   // printf("path: %s\n", path);
   token = strtok_r (dir_copy, "/", &save_ptr);
   // printf("token: %s\n", token);
+  // printf("%s\n",);
+  if (strlen(token) > (size_t)(NAME_MAX + 1))
+      return false;
+
   while (token != NULL)
   {
+    
     if (strlen(token) == 0) 
       continue;
     // printf("token before copy: %s\n", token);
@@ -886,6 +891,8 @@ parse_path (const char *path, struct dir **last_dir, char *last_name)
 
 
     token = strtok_r (NULL, "/", &save_ptr);
+    if (strlen(token) > (size_t)(NAME_MAX + 1))
+      return false;
     // printf("token after strtok: %s\n", token);
     if (token == NULL) 
     {

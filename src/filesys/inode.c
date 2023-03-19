@@ -326,7 +326,6 @@ bool inode_create(block_sector_t sector, off_t length, bool is_dir)
     }
   // free(disk_inode);
   }
-
   lock_acquire(&entry->lock);
   entry->num_active--;
   lock_release(&entry->lock);

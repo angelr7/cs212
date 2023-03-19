@@ -8,6 +8,7 @@
 #include "filesys/directory.h"
 #include "filesys/cache.h"
 #include "threads/thread.h"
+#include "userprog/syscall.h"
 
 /* Partition that contains the file system. */
 struct block *fs_device;
@@ -69,16 +70,29 @@ filesys_create (const char *name, off_t initial_size, bool is_dir)
    Fails if no file named NAME exists,
    or if an internal memory allocation fails. */
 struct file *
-filesys_open (const char *name)
+filesys_open (const char *path)
 {
-  struct dir *dir = dir_open_root ();
+  // if(dir == NULL)
+  struct dir *dir;
+  char last_name[NAME_MAX + 1];
+  if(!parse_path(path, &dir, last_name))
+    return NULL;
   struct inode *inode = NULL;
-
   if (dir != NULL)
-    dir_lookup (dir, name, &inode);
+    dir_lookup (dir, last_name, &inode);
   dir_close (dir);
-
   return file_open (inode);
+
+
+  // struct dir *dir;
+  //   dir = dir_open_root ();
+  // struct inode *inode = NULL;
+
+  // if (dir != NULL)
+  //   dir_lookup (dir, path, &inode);
+  // dir_close (dir);
+
+  // return file_open (inode);
 }
 
 /* Deletes the file named NAME.

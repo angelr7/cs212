@@ -2,6 +2,7 @@
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "filesys/free-map.h"
+#include "filesys/inode.h"
 #include "userprog/syscall.h"
 #include "userprog/pagedir.h"
 #include <stdio.h>
@@ -43,9 +44,9 @@ static void munmap(mapid_t mapping);
 static void unpin(void *pointer, int size);
 static void chdir (const char *dir, struct intr_frame *f);
 static void mkdir (const char *dir, struct intr_frame *f);
-static bool readdir (int fd, char *name);
-static bool isdir (int fd);
-static int inumber (int fd);
+static void readdir (int fd, char *name, struct intr_frame *f);
+static void isdir (int fd, struct intr_frame *f);
+static void inumber (int fd, struct intr_frame *f);
 
 
 struct fd_elem
@@ -160,8 +161,17 @@ syscall_handler(struct intr_frame *f)
     chdir((const char *)arg1, f);
     break;
   case SYS_MKDIR:
-  mkdir((const char *)arg1, f);
-  break;
+    mkdir((const char *)arg1, f);
+    break;
+  case SYS_READDIR:
+    readdir((int)arg1, (const char *)arg2, f);
+    break;
+  case SYS_ISDIR:
+    isdir((int)arg1, f);
+    break;
+  case SYS_INUMBER:
+    inumber((int)arg1, f);
+    break;
   }
 }
 
@@ -374,7 +384,8 @@ void exit_handler(int status)
 static void
 exec(const char *file, struct intr_frame *f)
 {
-  verify_string(file);  
+  verify_string(file);
+
   f->eax = process_execute(file);
 }
 
@@ -390,26 +401,8 @@ static void
 create(const char *file, unsigned initial_size, struct intr_frame *f)
 {
   verify_string(file);
-
-  struct dir *cur_dir;
-  char last_name[NAME_MAX + 1];
-  if (!parse_path(file, &cur_dir, last_name))
-  {
-    f->eax = false;
-    return;
-  } 
-  struct inode *inode;
-  /* check if this file name already exists */
-  if (dir_lookup (cur_dir, last_name, &inode))
-  {
-    dir_close(cur_dir);
-    f->eax = false;
-    return;
-  }
-  dir_close(cur_dir);
-
-  bool success = filesys_create(file, initial_size, false);
-  f->eax = success;
+  f->eax = filesys_create(file, initial_size, false);
+  return;
 }
 
 /*Remove file*/
@@ -438,6 +431,7 @@ open(const char *file, struct intr_frame *f)
   // lock_release(&filesys_lock);
   if (opened_file == NULL)
   {
+    // printf("open failed for file file: %s\n", file);
     f->eax = -1;
     return;
   }
@@ -688,39 +682,72 @@ static void
 chdir (const char *dir, struct intr_frame *f)
 {
   verify_string(dir);
-  struct dir *initial_working_dir = thread_current()->working_dir;
-  struct dir *cur_dir = initial_working_dir;
-  if (*dir == '/')  
+
+  struct dir *cur_dir;
+  char last_name[NAME_MAX + 1];
+  if (!parse_path(dir, &cur_dir, last_name))
   {
-    cur_dir = dir_open_root();
+    f->eax = false;
+    return;
   }
-
-  char dir_copy[strlen(dir) + 1];
-  strlcpy(dir_copy, dir, strlen(dir) + 1);
-  char *token, *save_ptr;
-
-  for (token = strtok_r (dir_copy, "/", &save_ptr); token != NULL;
-      token = strtok_r (NULL, "/", &save_ptr))
+  // looking for target directory
+  struct inode *inode;
+  if (!dir_lookup (cur_dir, last_name, &inode) || !inode->is_dir)
   {
-    if (strlen(token) == 0) continue;
-    struct inode *inode;
-    if (!dir_lookup(cur_dir, token, &inode) && cur_dir != initial_working_dir)
-    {
-      dir_close(cur_dir);
-      f->eax = false;
-      return;
-    }
     dir_close(cur_dir);
-    cur_dir = dir_open(inode);
-    if (cur_dir == NULL)
-    {
-      f->eax = false;
-      return;
-    }
+    f->eax = false;
+    return;
   }
-  thread_current()->working_dir = cur_dir;
+
+  dir_close(cur_dir);
+  struct dir *new_working_dir = dir_open(inode);
+  if (new_working_dir == NULL)
+  {
+    f->eax = false;
+    return;
+  }
+
+  dir_close(thread_current()->working_dir);
+  thread_current()->working_dir = new_working_dir;
   f->eax = true;
   return;
+
+
+  // struct dir *initial_working_dir = thread_current()->working_dir;
+  // struct dir *cur_dir = initial_working_dir;
+  // if (*dir == '/')
+  // {
+  //   cur_dir = dir_open_root();
+  // }
+
+
+
+  // char dir_copy[strlen(dir) + 1];
+  // strlcpy(dir_copy, dir, strlen(dir) + 1);
+  // char *token, *save_ptr;
+
+  // for (token = strtok_r (dir_copy, "/", &save_ptr); token != NULL;
+  //     token = strtok_r (NULL, "/", &save_ptr))
+  // {
+  //   if (strlen(token) == 0) continue;
+  //   struct inode *inode;
+  //   if (!dir_lookup(cur_dir, token, &inode) && cur_dir != initial_working_dir)
+  //   {
+  //     dir_close(cur_dir);
+  //     f->eax = false;
+  //     return;
+  //   }
+  //   dir_close(cur_dir);
+  //   cur_dir = dir_open(inode);
+  //   if (cur_dir == NULL)
+  //   {
+  //     f->eax = false;
+  //     return;
+  //   }
+  // }
+  // thread_current()->working_dir = cur_dir;
+  // f->eax = true;
+  // return;
 }
 
 static void
@@ -762,22 +789,54 @@ mkdir (const char *dir, struct intr_frame *f)
   return;
 }
 
-static bool
-readdir (int fd, char *name)
+static void
+readdir (int fd, char *name, struct intr_frame *f)
 {
-
+  // verify_pointer(name, sizeof(char *));
+  struct fd_elem *fd_elem = list_find_fd_elem(thread_current(), fd);
+  if (fd_elem == NULL || !fd_elem->file->inode->is_dir)
+  {
+    f->eax = false;
+    return;
+  }
+  struct dir *dir = dir_open(fd_elem->file->inode);
+  name = "";
+  while (strcmp(name, ".") == 0 || strcmp(name, "..") == 0)
+  {
+    if (dir == NULL || !dir_readdir(dir, name))
+    {
+      f->eax = false;
+      return;
+    }
+  }
+  f->eax = true;
+    return;
 }
 
-static bool
-isdir (int fd)
+static void
+isdir (int fd, struct intr_frame *f)
 {
-
+  struct fd_elem *fd_elem = list_find_fd_elem(thread_current(), fd);
+  if (fd_elem == NULL || !fd_elem->file->inode->is_dir)
+  {
+    f->eax = false;
+    return;
+  }
+  f->eax = true;
+  return;
 }
 
-static int
-inumber (int fd)
+static void
+inumber (int fd, struct intr_frame *f)
 {
-
+  struct fd_elem *fd_elem = list_find_fd_elem(thread_current(), fd);
+  if (fd_elem == NULL || !fd_elem->file->inode->is_dir)
+  {
+    f->eax = -1;
+    return;
+  }
+  f->eax = fd_elem->file->inode->sector;
+  return;
 }
 
 /* Parses path and populates last_dir with the final open directory and
@@ -811,6 +870,7 @@ parse_path (const char *path, struct dir **last_dir, char *last_name)
 
     if (strlen(token) == 0) 
       continue;
+    
     // printf("token before copy: %s\n", token);
     strlcpy(last_name, token, strlen(token) + 1);
     // printf("last name after copy: %s\n", last_name);

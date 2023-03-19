@@ -1,10 +1,12 @@
 #ifndef FILESYS_FILE_H
 #define FILESYS_FILE_H
 
+#include <stdbool.h>
 #include "filesys/off_t.h"
 #include "filesys/inode.h"
 #include <stdbool.h>
 
+struct inode;
 
 /* An open file. */
 struct file 
@@ -13,9 +15,6 @@ struct file
     off_t pos;                  /* Current position. */
     bool deny_write;            /* Has file_deny_write() been called? */
   };
-
-
-struct inode;
 
 /* Opening and closing files. */
 struct file *file_open (struct inode *);

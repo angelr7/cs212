@@ -49,18 +49,25 @@ filesys_done (void)
    Fails if a file named NAME already exists,
    or if internal memory allocation fails. */
 bool
-filesys_create (const char *name, off_t initial_size, bool is_dir) 
+filesys_create (const char *path, off_t initial_size, bool is_dir) 
 {
+  struct dir *dir;
+  char last_name[NAME_MAX + 1];
+  if(!parse_path(path, &dir, last_name))
+    return false;
+  struct inode *inode = NULL;
+  if (dir != NULL)
+    dir_lookup (dir, last_name, &inode);
+
   block_sector_t inode_sector = 0;
-  struct dir *dir = dir_open_root ();
+  // struct dir *dir = dir_open_root ();
   bool success = (dir != NULL
                   && free_map_allocate (1, &inode_sector)
                   && inode_create (inode_sector, initial_size, is_dir)
-                  && dir_add (dir, name, inode_sector));
+                  && dir_add (dir, last_name, inode_sector));
+  dir_close(dir);
   if (!success && inode_sector != 0) 
     free_map_release (inode_sector, 1);
-  dir_close (dir);
-
   return success;
 }
 
@@ -73,26 +80,24 @@ struct file *
 filesys_open (const char *path)
 {
   // if(dir == NULL)
-  struct dir *dir;
+  struct dir *dir = NULL;
   char last_name[NAME_MAX + 1];
   if(!parse_path(path, &dir, last_name))
     return NULL;
   struct inode *inode = NULL;
   if (dir != NULL)
-    dir_lookup (dir, last_name, &inode);
+  {
+    if (strlen(last_name) == 0)
+    {
+      struct file *opened = file_open(dir->inode);
+      dir_close(dir);
+      return opened;
+    }
+    else
+      dir_lookup (dir, last_name, &inode);
+  }
   dir_close (dir);
   return file_open (inode);
-
-
-  // struct dir *dir;
-  //   dir = dir_open_root ();
-  // struct inode *inode = NULL;
-
-  // if (dir != NULL)
-  //   dir_lookup (dir, path, &inode);
-  // dir_close (dir);
-
-  // return file_open (inode);
 }
 
 /* Deletes the file named NAME.
@@ -100,10 +105,29 @@ filesys_open (const char *path)
    Fails if no file named NAME exists,
    or if an internal memory allocation fails. */
 bool
-filesys_remove (const char *name) 
+filesys_remove (const char *path) 
 {
-  struct dir *dir = dir_open_root ();
-  bool success = dir != NULL && dir_remove (dir, name);
+  struct dir *dir;
+  char last_name[NAME_MAX + 1];
+  if(!parse_path(path, &dir, last_name))
+    return NULL;
+  struct inode *inode = NULL;
+  if (dir != NULL)
+  {
+    if (strlen(last_name) == 0)
+    {
+      if (dir->inode->sector == ROOT_DIR_SECTOR)
+      {
+        dir_close(dir);
+        return false;
+      }
+      bool success = dir_remove (dir, last_name);
+      dir_close(dir);
+      return success;
+    }
+    dir_lookup (dir, last_name, &inode);
+  }
+  bool success = dir != NULL && dir_remove (dir, last_name);
   dir_close (dir); 
 
   return success;

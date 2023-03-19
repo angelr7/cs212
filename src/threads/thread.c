@@ -95,7 +95,7 @@ void thread_init(void)
   list_init(&ready_list);
   list_init(&all_list);
   lock_init(&process_lock);
-  lock_init(&filesys_lock);
+  // lock_init(&filesys_lock);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread();

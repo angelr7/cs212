@@ -44,6 +44,21 @@ static bool write_out_sector(struct block *, block_sector_t, struct cache_entry 
 static void flush_thread_func(void *);
 static void read_ahead_thread_func(void *);
 
+int dump_buffer_cache(void);
+
+int dump_buffer_cache() {
+  // while (*buffer_cache != NULL) {
+  //   printf("%zu\n", (*buffer_cache)->num_active);
+  //   buffer_cache += 1;
+  // }
+  bool all_have_active = true;
+  for (int i = 0; i < BUFFER_CACHE_SIZE; i++) {
+    all_have_active = buffer_cache[i]->num_active > 0;
+  }
+
+  return all_have_active? 1 : 0;
+}
+
 void
 buffer_cache_init(void)
 {

@@ -904,10 +904,10 @@ parse_path (const char *path, struct dir **last_dir, char *last_name)
     // printf("token after strtok: %s\n", token);
     if (token == NULL) 
     {
+      
       // printf("token null breaking\n");
       break;
     }
-
     struct inode *inode; 
 
     if (!dir_lookup(cur_dir, last_name, &inode))

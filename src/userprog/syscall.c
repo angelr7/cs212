@@ -375,20 +375,21 @@ static void
 exec(const char *file, struct intr_frame *f)
 {
   verify_string(file);
-  struct dir *cur_dir;
-  char last_name[NAME_MAX + 8];
-  if (!parse_path(file, &cur_dir, last_name))
-  {
-    f->eax = -1;
-    return;
-  } 
-  struct inode *inode;
-  if (!dir_lookup (cur_dir, last_name, &inode) || inode->is_dir)
-  {
-    dir_close(cur_dir);
-    f->eax = -1;
-    return;
-  }
+  // struct dir *cur_dir;
+  // char last_name[strlen(file)+1];
+  // if (!parse_path(file, &cur_dir, last_name))
+  // {
+  //   f->eax = -1;
+  //   return;
+  // } 
+  // struct inode *inode;
+  // if (!dir_lookup (cur_dir, last_name, &inode) || inode->is_dir)
+  // {
+  //   dir_close(cur_dir);
+  //   f->eax = -1;
+  //   return;
+  // }
+  // dir_close(cur_dir);
   
   f->eax = process_execute(file);
 }

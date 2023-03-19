@@ -2,6 +2,7 @@
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "filesys/free-map.h"
+#include "filesys/inode.h"
 #include "userprog/syscall.h"
 #include "userprog/pagedir.h"
 #include <stdio.h>
@@ -23,7 +24,7 @@ typedef int mapid_t;
 static void syscall_handler(struct intr_frame *);
 static void verify_pointer(const void *pointer, int size);
 static void verify_writable(void *pointer, int size);
-static bool parse_path (const char *path, struct dir **last_dir, char *last_name);
+static struct dir *parse_path (const char *path, char *last_name);
 static void halt(void) NO_RETURN;
 void exit_handler(int status);
 static void exec(const char *file, struct intr_frame *f);
@@ -42,9 +43,9 @@ static void munmap(mapid_t mapping);
 static void unpin(void *pointer, int size);
 static void chdir (const char *dir, struct intr_frame *f);
 static void mkdir (const char *dir, struct intr_frame *f);
-static bool readdir (int fd, char *name);
-static bool isdir (int fd);
-static int inumber (int fd);
+static void readdir (int fd, char *name, struct intr_frame *f);
+static void isdir (int fd, struct intr_frame *f);
+static void inumber (int fd, struct intr_frame *f);
 
 
 struct fd_elem
@@ -158,8 +159,17 @@ syscall_handler(struct intr_frame *f)
     chdir((const char *)arg1, f);
     break;
   case SYS_MKDIR:
-  mkdir((const char *)arg1, f);
-  break;
+    mkdir((const char *)arg1, f);
+    break;
+  case SYS_READDIR:
+    readdir((int)arg1, (const char *)arg2, f);
+    break;
+  case SYS_ISDIR:
+    isdir((int)arg1, f);
+    break;
+  case SYS_INUMBER:
+    inumber((int)arg1, f);
+    break;
   }
 }
 
@@ -373,6 +383,7 @@ static void
 exec(const char *file, struct intr_frame *f)
 {
   verify_string(file);
+
   f->eax = process_execute(file);
 }
 
@@ -664,13 +675,12 @@ static void
 chdir (const char *dir, struct intr_frame *f)
 {
   verify_string(dir);
-
   // struct dir *cur_dir;
 
 
   struct dir *initial_working_dir = thread_current()->working_dir;
   struct dir *cur_dir = initial_working_dir;
-  if (dir[0] == "/")
+  if (*dir == '/')
   {
     cur_dir = dir_open_root();
   }
@@ -713,15 +723,16 @@ mkdir (const char *dir, struct intr_frame *f)
   //   return;
   // }
 
-  struct dir *cur_dir;
-  char *last_name[NAME_MAX + 1];
-  if (!parse_path(dir, &cur_dir, last_name))
+  // struct dir *cur_dir;
+  char last_name[NAME_MAX + 1];
+  struct dir *cur_dir = parse_path(dir, last_name);
+  if (cur_dir == NULL)
   {
     f->eax = false;
     return;
   }
-  printf("path parsed\n");
-  printf("%p, last name: %s\n", cur_dir, last_name);
+  // printf("path parsed\n");
+  // printf("%p, last name: %s\n", cur_dir, last_name);
 
 
 
@@ -788,26 +799,55 @@ mkdir (const char *dir, struct intr_frame *f)
   return;
 }
 
-static bool
-readdir (int fd, char *name)
+static void
+readdir (int fd, char *name, struct intr_frame *f)
 {
-
+  verify_pointer(name, sizeof(char *));
+  struct fd_elem *fd_elem = list_find_fd_elem(thread_current(), fd);
+  if (fd_elem == NULL || !fd_elem->file->inode->is_dir || 
+      strcmp(name, ".") == 0 || strcmp(name, "..") == 0)
+  {
+    f->eax = false;
+    return;
+  }
+  struct dir *dir = dir_open(fd_elem->file->inode);
+  if (dir == NULL || !dir_readdir(dir, name))
+  {
+    f->eax = false;
+    return;
+  }
+  f->eax = true;
+  return;
 }
 
-static bool
-isdir (int fd)
+static void
+isdir (int fd, struct intr_frame *f)
 {
-
+  struct fd_elem *fd_elem = list_find_fd_elem(thread_current(), fd);
+  if (fd_elem == NULL || !fd_elem->file->inode->is_dir)
+  {
+    f->eax = false;
+    return;
+  }
+  f->eax = true;
+  return;
 }
 
-static int
-inumber (int fd)
+static void
+inumber (int fd, struct intr_frame *f)
 {
-
+  struct fd_elem *fd_elem = list_find_fd_elem(thread_current(), fd);
+  if (fd_elem == NULL || !fd_elem->file->inode->is_dir)
+  {
+    f->eax = -1;
+    return;
+  }
+  f->eax = fd_elem->file->inode->sector;
+  return;
 }
 
-static bool
-parse_path (const char *path, struct dir **last_dir, char *last_name)
+static struct dir *
+parse_path (const char *path, char *last_name)
 {
   verify_string(path);
 
@@ -815,39 +855,39 @@ parse_path (const char *path, struct dir **last_dir, char *last_name)
     return false;
 
   struct dir *cur_dir;
-  if (path[0] == "/")
+  if (*path == '/')
     cur_dir = dir_open_root();
   else
     cur_dir = dir_reopen(thread_current()->working_dir);
 
-  char *dir_copy[strlen(path) + 1];
+  char dir_copy[strlen(path) + 1];
   strlcpy(dir_copy, path, strlen(path) + 1);
   char *token, *save_ptr;
 
-  printf("path: %s\n", path);
+  // printf("path: %s\n", path);
   token = strtok_r (dir_copy, "/", &save_ptr);
-  printf("token: %s\n", token);
+  // printf("token: %s\n", token);
   while (token != NULL)
   {
     if (strlen(token) == 0) 
       continue;
-    printf("token before copy: %s\n", token);
+    // printf("token before copy: %s\n", token);
     strlcpy(last_name, token, strlen(token) + 1);
-    printf("last name after copy: %s\n", last_name);
+    // printf("last name after copy: %s\n", last_name);
 
 
     token = strtok_r (NULL, "/", &save_ptr);
-    printf("token after strtok: %s\n", token);
+    // printf("token after strtok: %s\n", token);
     if (token == NULL) 
     {
-      printf("token null breaking\n");
+      // printf("token null breaking\n");
       break;
     }
     struct inode *inode; 
 
     if (!dir_lookup(cur_dir, last_name, &inode))
     {
-      printf("dir lookup failed\n");
+      // printf("dir lookup failed\n");
       dir_close(cur_dir);
       return false;
     }
@@ -856,12 +896,13 @@ parse_path (const char *path, struct dir **last_dir, char *last_name)
     cur_dir = dir_open(inode);
     if (cur_dir == NULL)
       return false;
-    printf("last name: %s\n", last_name);
-    printf("token: %s\n", token);
+    // printf("last name: %s\n", last_name);
+    // printf("token: %s\n", token);
   }
 
-  printf("last name: %s\n", last_name);
-  printf("token: %s\n", token);
-  *last_dir = cur_dir;
-  return true;
+  // printf("last name: %s\n", last_name);
+  // printf("token: %s\n", token);
+  return cur_dir;
+  // *last_dir = cur_dir;
+  // return true;
 }

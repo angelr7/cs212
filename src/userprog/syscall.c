@@ -852,7 +852,7 @@ static void
 inumber (int fd, struct intr_frame *f)
 {
   struct fd_elem *fd_elem = list_find_fd_elem(thread_current(), fd);
-  if (fd_elem == NULL || !fd_elem->file->inode->is_dir)
+  if (fd_elem == NULL)
   {
     f->eax = -1;
     return;

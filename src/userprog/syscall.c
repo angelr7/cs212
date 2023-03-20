@@ -159,13 +159,19 @@ syscall_handler(struct intr_frame *f)
     munmap((mapid_t)arg1);
     break;
   case SYS_CHDIR:
+    lock_acquire(&dir_lock);
     chdir((const char *)arg1, f);
+    lock_release(&dir_lock);
     break;
   case SYS_MKDIR:
+    lock_acquire(&dir_lock);
     mkdir((const char *)arg1, f);
+    lock_release(&dir_lock);
     break;
   case SYS_READDIR:
+    lock_acquire(&dir_lock);
     readdir((int)arg1, (char *)arg2, f);
+    lock_release(&dir_lock);
     break;
   case SYS_ISDIR:
     isdir((int)arg1, f);
@@ -564,9 +570,11 @@ close(int fd)
     return;
 
   // lock_acquire(&filesys_lock);
-  file_close(fd_elem->file);
+  
   if (fd_elem->is_dir)
     dir_close(fd_elem->dir);
+  else
+    file_close(fd_elem->file);
   // lock_release(&filesys_lock);
   list_remove(&fd_elem->elem);
   free(fd_elem);
@@ -810,7 +818,7 @@ readdir (int fd, char name[NAME_MAX + 1], struct intr_frame *f)
   bool success = dir_readdir(dir, name);
   while (success && (strcmp(name, ".") == 0 || strcmp(name, "..") == 0))
   {
-    // printf("%s\n", name);
+    // printf("%s\n", name);mk
     success = dir_readdir(dir, name);
     if (!success)
     {

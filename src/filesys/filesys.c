@@ -27,6 +27,7 @@ filesys_init (bool format)
   buffer_cache_init();
   inode_init ();
   free_map_init ();
+  lock_init(&dir_lock);
 
   if (format) 
     do_format ();

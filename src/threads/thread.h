@@ -38,9 +38,10 @@ struct child_process
    bool child_error;             /*Did the child encounter an error*/
    bool tried_to_free;           /*Did the parent try to free this child*/
    char *file_name;              /*Child thread file name*/
-   struct semaphore wait_child;  /*Semaphore to make parent wait for start process to finish before finishing exec_proces*/
+   struct semaphore wait_child;  /*Semaphore to make parent wait for start process to 
+                                   finish before finishing exec_proces*/
    struct list_elem wait_elem;   /*Elem for child to be put in parents list*/
-   struct condition wait_cond;   /*Cond variable to wake up parent in process_wait when child exits*/
+   struct condition wait_cond;   /*Cond variable to wake parent in process_wait when child exits*/
    struct lock wait_lock;        /*Lock to wake up parent in process_wait when child exits*/
 
 };

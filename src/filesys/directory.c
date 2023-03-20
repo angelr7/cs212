@@ -22,6 +22,14 @@ struct dir_entry
     bool in_use;                        /* In use or free? */
   };
 
+void
+print_entries(struct inode *inode) {
+  struct dir *dir = dir_open(inode);
+  char name[15];
+  while (dir_readdir(dir, name))
+    printf("name: %s\n", name);
+}
+
 static int
 get_num_entries(struct inode *inode) 
 {
@@ -61,9 +69,13 @@ decrement_num_entries(struct inode *inode)
 bool
 dir_create (block_sector_t sector, size_t entry_cnt, struct dir *parent_dir)
 {
+  
   bool success = inode_create (sector, entry_cnt * sizeof (struct dir_entry), true);
   if (!success)
+  {
+    
     return success;
+  }
   
   if (sector == ROOT_DIR_SECTOR)
   {
@@ -72,10 +84,12 @@ dir_create (block_sector_t sector, size_t entry_cnt, struct dir *parent_dir)
     if (!success) 
     {
       dir_close(root_dir);
+      
       return success;
     }
     success = dir_add(root_dir, "..", ROOT_DIR_SECTOR);
     dir_close(root_dir);
+    
     return success;
   }
   struct inode *cur_inode = inode_open(sector);
@@ -84,11 +98,13 @@ dir_create (block_sector_t sector, size_t entry_cnt, struct dir *parent_dir)
   if (!success)
   {
     dir_close(cur_dir);
+    
     return success;
   }
   success = dir_add(cur_dir, "..", parent_dir->inode->sector);
   // inode_close(cur_inode);
   dir_close(cur_dir);
+  
   return success;
 }
 
@@ -97,17 +113,20 @@ dir_create (block_sector_t sector, size_t entry_cnt, struct dir *parent_dir)
 struct dir *
 dir_open (struct inode *inode) 
 {
+  
   struct dir *dir = calloc (1, sizeof *dir);
   if (inode != NULL && inode->is_dir && dir != NULL)
     {
       dir->inode = inode;
       dir->pos = 0;
+      
       return dir;
     }
   else
     {
       inode_close (inode);
       free (dir);
+      
       return NULL; 
     }
 }
@@ -132,11 +151,13 @@ dir_reopen (struct dir *dir)
 void
 dir_close (struct dir *dir) 
 {
+  
   if (dir != NULL)
     {
       inode_close (dir->inode);
       free (dir);
     }
+  
 }
 
 /* Returns the inode encapsulated by DIR. */
@@ -155,6 +176,7 @@ static bool
 lookup (const struct dir *dir, const char *name,
         struct dir_entry *ep, off_t *ofsp) 
 {
+  
   struct dir_entry e;
   size_t ofs;
   
@@ -169,8 +191,10 @@ lookup (const struct dir *dir, const char *name,
           *ep = e;
         if (ofsp != NULL)
           *ofsp = ofs;
+        
         return true;
       }
+  
   return false;
 }
 
@@ -182,6 +206,7 @@ bool
 dir_lookup (const struct dir *dir, const char *name,
             struct inode **inode) 
 {
+  
   struct dir_entry e;
 
   ASSERT (dir != NULL);
@@ -191,7 +216,7 @@ dir_lookup (const struct dir *dir, const char *name,
     *inode = inode_open (e.inode_sector);
   else
     *inode = NULL;
-
+  
   return *inode != NULL;
 }
 
@@ -204,6 +229,7 @@ dir_lookup (const struct dir *dir, const char *name,
 bool
 dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
 {
+  
   struct dir_entry e;
   off_t ofs;
   bool success = false;
@@ -213,7 +239,10 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
 
   /* Check NAME for validity. */
   if (*name == '\0' || strlen (name) > NAME_MAX)
+  {
+    
     return false;
+  }
 
   /* Check that NAME is not in use. */
   if (lookup (dir, name, NULL, NULL))
@@ -240,6 +269,7 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
  done:
   if (success && (strcmp(name, ".") != 0 && strcmp(name, "..") != 0))
     increment_num_entries(dir->inode);
+  
   return success;
 }
 
@@ -249,6 +279,7 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
 bool
 dir_remove (struct dir *dir, const char *name) 
 {
+  
   struct dir_entry e;
   struct inode *inode = NULL;
   bool success = false;
@@ -284,8 +315,9 @@ dir_remove (struct dir *dir, const char *name)
 
  done:
   if (success)
-    decrement_num_entries(inode);
+    decrement_num_entries(dir->inode);
   inode_close (inode);
+  
   return success;
 }
 
@@ -295,6 +327,7 @@ dir_remove (struct dir *dir, const char *name)
 bool
 dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
 {
+  
   struct dir_entry e;
 
   while (inode_read_at (dir->inode, &e, sizeof e, dir->pos) == sizeof e) 
@@ -303,8 +336,10 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
       if (e.in_use)
         {
           strlcpy (name, e.name, strlen(e.name) + 1);
+          
           return true;
         } 
     }
+  
   return false;
 }

@@ -38,12 +38,36 @@ Fabian Luna <luna1206@stanford.edu>
 >> A3: Explain how your code avoids a race if two processes attempt to
 >> extend a file at the same time.
 
+When a process wants to extend a file it will be calling file_write which
+calls inode_write_at. Every file has an EOF (end of file) lock and a length
+lock which are accessed through the inode. The EOF lock is used to ensure 
+that more than one concurrent write which extends past the end of file can not
+occur. The EOF lock locks the entire write call which extends past eof, if
+we are not extending past the end of file two concurrent write can occur.
+We also have a length lock, which ensures that the length is not in the middle
+of being changed when you attempt to grab the length. The inode_write_at
+does not update the length of the inode until after all allocation and
+writing has completed to ensure that no reads or writes occuring at the same
+time have access to unallocated memory with garbage values.
+
+
+
 >> A4: Suppose processes A and B both have file F open, both
 >> positioned at end-of-file.  If A reads and B writes F at the same
 >> time, A may read all, part, or none of what B writes.  However, A
 >> may not read data other than what B writes, e.g. if B writes
 >> nonzero data, A is not allowed to see all zeros.  Explain how your
 >> code avoids this race.
+
+In the situation where process A and B are both at the end of file, where
+A is reading and B is writing we will have three cases which avoid race
+conditions. Our implementation only updates length when a write completed
+ensuring that a race or the possibility of reading garbage data is not 
+possible. Also, a process will be unable to read past eof therefore an
+attempt to read garbage data will not work. Since inode length is 
+protected with a fine grained lock we ensure that the length changes
+atomically. 
+
 
 >> A5: Explain how your synchronization design provides "fairness".
 >> File access is "fair" if readers cannot indefinitely block writers
@@ -52,6 +76,12 @@ Fabian Luna <luna1206@stanford.edu>
 >> processes writing to a file cannot prevent another process forever
 >> from reading the file.
 
+We allow for files to be simultaneously read and written to. The only
+exception to this rule is when a file is being written past eof only
+one process will be allowed to do this. This allows for maximal fairness
+since we are ensuring that no read is blocking any write and that
+no write is blocking a read.
+
 ---- RATIONALE ----
 
 >> A6: Is your inode structure a multilevel index?  If so, why did you
@@ -59,6 +89,12 @@ Fabian Luna <luna1206@stanford.edu>
 >> indirect blocks?  If not, why did you choose an alternative inode
 >> structure, and what advantages and disadvantages does your
 >> structure have, compared to a multilevel index?
+
+We chose a multilvel index with 12 direct blocks, 1 indirect block,
+and 1 doubly indirect block. The reason for this choice was to ensure
+that we satisfied the spec which stated that file sized of 8mb should
+be supported through our indexing system. This setups stores more than
+enough data to handle 8mb files.
 
                 SUBDIRECTORIES
                 ==============
@@ -74,6 +110,10 @@ Fabian Luna <luna1206@stanford.edu>
 >> B2: Describe your code for traversing a user-specified path.  How
 >> do traversals of absolute and relative paths differ?
 
+We have a function called parse_path which we utilize numerous times to
+traverse paths. 
+
+
 ---- SYNCHRONIZATION ----
 
 >> B4: How do you prevent races on directory entries?  For example,
@@ -81,15 +121,32 @@ Fabian Luna <luna1206@stanford.edu>
 >> should succeed, as should only one of two simultaneous attempts to
 >> create a file with the same name, and so on.
 
+We have a directory lock, wheenver chhanging creating or reading 
+syscall directories or whenevering creating or removing a directory we
+lock to ensure that this can not happen at the same time. 
+
 >> B5: Does your implementation allow a directory to be removed if it
 >> is open by a process or if it is in use as a process's current
 >> working directory?  If so, what happens to that process's future
 >> file system operations?  If not, how do you prevent it?
 
+Our implementation only allows for a directory to be removed if no
+process has it open, it is not the working directory for any 
+process, and it has no entries. In our implementation any time a process
+uses a directory as its working_directory it will increase open_cnt. Also,
+opening the directory regularly will increase open_cnt. Therefore 
+both of these checks are handled through the value of open_cnt which
+can be accessed from the directories inode. Since we open the process
+twice just to look at it in the event that open_cnt <= 2 we know that
+we are able to remove that directory. Otherwise we will decrement open_cnt
+and will not remove the directory. 
+
 ---- RATIONALE ----
 
 >> B6: Explain why you chose to represent the current directory of a
 >> process the way you did.
+
+FOR FABIAN AND ANGEL
 
                  BUFFER CACHE
                  ============
@@ -100,14 +157,75 @@ Fabian Luna <luna1206@stanford.edu>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+This is the cache entry struct which is used to store the information
+for each entry in our buffer cache.
+struct cache_entry
+{
+  block_sector_t sector_idx;
+  bool accessed;
+  bool dirty;
+  int num_active;
+  unsigned char data[BLOCK_SECTOR_SIZE];
+  struct lock lock;
+};
+The read_ahead_struct will 
+struct read_ahead_struct 
+{
+  block_sector_t sector_id; 
+  struct list_elem elem;
+};
+
+
+struct list read_ahead_ids;
+struct condition read_ahead;
+struct lock read_ahead_lock;
+
+static struct cache_entry **buffer_cache;
+static struct bitmap *used_map;
+static struct lock searching_lock;
+
+static int evict_idx;
+
+
 ---- ALGORITHMS ----
 
 >> C2: Describe how your cache replacement algorithm chooses a cache
 >> block to evict.
 
+We use clock eviction. Check the cache entries accessed bit if it is accessed
+we set it to false and continue. Otherwise we evict that page, if dirty then 
+we write it to disk. The next time we evict we continue with the entry after 
+the one which we previously evicted. If an entry is pinned we skip over it and
+go to the following cache entry. An entry is pinned if num_active > 0. 
+
 >> C3: Describe your implementation of write-behind.
 
+For write behind we always write dirty blocks to to the cache. Upon eviction
+we write that block to disk. To make sure lots of data is not lost upon a 
+crash we flush (write) all dirty entries in our cache to disk every 100 ticks. To 
+do this we have a flush thread in the background which wakes up every 100 
+ticks and flushes the cache then goes back to sleep. This thread is 
+initialized in buffer_cache_init. To ensure that we are not busy waiting
+we utilize our timer_sleep() implementation from assignment 1. 
+
 >> C4: Describe your implementation of read-ahead.
+
+To implement read ahead we have a "read ahead thread" which is initialized
+in buffer_cache_init. This thread infinitely runs in the background and
+utilizes a condition variable and read ahead lock. In inode_read_at 
+whenever a block is being read, if the following block in this inode exists
+and is going to be read in our readahead function will fetch the 
+following block. The way this happens is the the inode_read_at function
+acquires the read_ahead_lock, pushes the sector_id of the following 
+block to the read_ahead_ids list, signals to the read ahead function
+and releases the lock.
+
+In the read_ahead_thread function we are waiting for a signal from the 
+condition variable sent by inode_read_at. When we recieve the signal we
+wake up and will read in the next element in our read_ahead_ids list to
+the cache. Since we do not need the data in this function we are just
+ensuring that this data is in the cache so the following read in
+inode_read_at is faster. 
 
 ---- SYNCHRONIZATION ----
 
@@ -115,13 +233,29 @@ Fabian Luna <luna1206@stanford.edu>
 >> buffer cache block, how are other processes prevented from evicting
 >> that block?
 
+When a process is reading or writing we ensure that it can not be evicted
+through pinning. Since multiple processes can read and write to the same
+data in the cache we can not use a boolean as we did in the previous
+assignment. Instead we utilized an int num_active, in the event that
+a process is reading or writing num active is incremented and when that
+call is completed it is decremented. If num_active > 0 we are unable to
+evict that entry and skip it.  
+
 >> C6: During the eviction of a block from the cache, how are other
 >> processes prevented from attempting to access the block?
+
+We have fine grained locking which is utilized for every entry. In the
+event that an entry is being evicted we lock that entry utilizing
+our entry->lock. This fine grained locking method ensures that During
+eviction a process is unable to be accessed. 
+
 
 ---- RATIONALE ----
 
 >> C7: Describe a file workload likely to benefit from buffer caching,
 >> and workloads likely to benefit from read-ahead and write-behind.
+
+FABIAN AND ANGEL
 
                SURVEY QUESTIONS
                ================

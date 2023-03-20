@@ -103,6 +103,7 @@ buffer_cache_read(struct block *block, block_sector_t sector_idx,
   }
 
   lock_acquire(&entry->lock);
+  entry->accessed = true;
   lock_release(&entry->lock);
 
   if (buffer == NULL) {
@@ -139,6 +140,7 @@ buffer_cache_write(struct block *block, block_sector_t sector_idx,
   /* Acquire lock to ensure that sector has been read in if wasn't in cache. */
   lock_acquire(&entry->lock);
   entry->dirty = true;
+  entry->accessed = true;
   lock_release(&entry->lock);
   memcpy(entry->data + sector_ofs, buffer, size);
   lock_acquire(&entry->lock);
@@ -166,9 +168,10 @@ cache_evict(struct block *block, block_sector_t sector_idx)
 {
   struct cache_entry *entry = buffer_cache[evict_idx % BUFFER_CACHE_SIZE];
   lock_acquire(&entry->lock);
-  while (entry->num_active > 0)
+  while (entry->num_active > 0 || entry->accessed)
   {
     lock_release(&entry->lock);
+    entry->accessed = false;
     entry = buffer_cache[++evict_idx % BUFFER_CACHE_SIZE];
     lock_acquire(&entry->lock);
   }
@@ -176,6 +179,7 @@ cache_evict(struct block *block, block_sector_t sector_idx)
   write_out_sector(block, old_sector_idx, entry);
   entry->sector_idx = sector_idx;
   entry->num_active++;
+  entry->accessed = false;
   return evict_idx++ % BUFFER_CACHE_SIZE;
 }
 

@@ -255,7 +255,39 @@ eviction a process is unable to be accessed.
 >> C7: Describe a file workload likely to benefit from buffer caching,
 >> and workloads likely to benefit from read-ahead and write-behind.
 
-FABIAN AND ANGEL
+Buffer caching will benefit files that constantly reuse the same sectors
+when performing their reading and writing operations. For example, imagine
+that we had a file that was only a few bytes long. In order to read this
+file from disk, we would need to read in its entire sector, and we would
+also need to do so when writing, since we write a sector at a time. By 
+pulling these sectors into memory, we only need to read once, 
+and all of our subsequent reads, writes, and comparisons will be done from 
+working memory. This prevents us from constantly having to read from disk
+when reading files and writing less than an entire sector.
+
+Reading or writing to files with more than one sector will benefit from 
+our read-ahead funtionality. By fetching the next sector attached to a file
+in parallel, we place it in our buffer cache, making it available by the 
+the time that the process will be able to read that next sector if necessary.
+For example, on a call like "cat", we would need to read the entire contents
+of the file. Reading ahead in this case would speed up our process 
+tremendously,since every other sector that we're reading is brought into the 
+buffer cache.This prevents our process from having to constantly wait on 
+expensive IO calls to read data from the disk.
+
+For our write behind functionality, files that constantly overwrite will 
+benefit from having dirty pages in the buffer cache. For example, if we have
+a file that is two sectors long, and it holds the error log for some program
+(i.e. a Pintos test), there is a good chance that we will constantly 
+overwrite the file over the course of a process' lifetime. By implementing 
+write-behind, we can allow these dirty sectors to be overwritten and operated
+on without constantly making expensive write calls to the disk. This 
+maintains the functionality and changes we'd want to see from our process 
+throughout the entire system, without having to make those permanent changes 
+until the process dies or the buffer cache periodically flushes. If we did
+not have write-behind in this case, we would constantly need to read in the 
+sector from disk to get the contents of the file and preserve what we didn't
+overwrite, since we can only a minimum of one sector at a time.
 
                SURVEY QUESTIONS
                ================

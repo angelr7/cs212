@@ -33,12 +33,16 @@ Fabian Luna <luna1206@stanford.edu>
 >> A2: What is the maximum size of a file supported by your inode
 >> structure?  Show your work.
 
-Oour inode structure allows for file sizes of 8460288 bytes
-12 Direct Nodes = 512 bytes * 12 = 6144 bytes
+Our inode structure allows for file sizes of 8460288 bytes
+We have:
 
-- Since we can have 128 pointers on one block
+1 sector is 512 bytes and a direct node = 1 sector. Therefore
+12 Direct Nodes = 512 bytes * 12 = 6144 bytes.
+
+Since we can have 128 pointers on one sector 
 1 Indirect Node = 512 bytes * 128 = 65536 bytes
-- Since we have 128 indirect nodes
+
+Since we have 128 indirect nodes in a double indirect node we have
 1 Double Indirect Node = 512 bytes * 128 * 128 = 8388608
 
 6144 + 65536 + 8388608 = 8460288 bytes
@@ -307,6 +311,9 @@ the quarter.
 
 >> In your opinion, was this assignment, or any one of the three problems
 >> in it, too easy or too hard?  Did it take too long or too little time?
+
+Too hard, no good explanation given about how to solve persistence tests. 
+Should explain in spec how to test persistence tests. 
 
 >> Did you find that working on a particular part of the assignment gave
 >> you greater insight into some aspect of OS design?

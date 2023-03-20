@@ -197,10 +197,9 @@ cache_evict(struct block *block, block_sector_t sector_idx)
     lock_acquire(&entry->lock);
   }
   block_sector_t old_sector_idx = entry->sector_idx;
+  write_out_sector(block, old_sector_idx, entry);
   entry->sector_idx = sector_idx;
   entry->num_active++;
-  // lock_release(&searching_lock);
-  write_out_sector(block, old_sector_idx, entry);
   return evict_idx++ % BUFFER_CACHE_SIZE;
 }
 
@@ -233,7 +232,7 @@ write_out_sector(struct block *block, block_sector_t sector_idx, struct cache_en
   if (!entry->dirty)
     return false;
   block_write(block, sector_idx, entry->data);
-  entry->dirty = 0;
+  entry->dirty = false;
   return true;
 }
 
@@ -247,7 +246,6 @@ buffer_cache_flush(void)
       {
         struct cache_entry *entry = buffer_cache[i];
         lock_acquire(&entry->lock);
-        // bitmap_flip(used_map, i);
         lock_release(&searching_lock);
         write_out_sector(fs_device, entry->sector_idx, entry);
         lock_release(&entry->lock);

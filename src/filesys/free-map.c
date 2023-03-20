@@ -10,6 +10,12 @@ static struct file *free_map_file;   /* Free map file. */
 static struct bitmap *free_map;      /* Free map, one bit per sector. */
 // static struct lock free_map_lock;
 
+void
+free_map_flush (void)
+{
+  bitmap_write(free_map, free_map_file);
+}
+
 /* Initializes the free map. */
 void
 free_map_init (void) 

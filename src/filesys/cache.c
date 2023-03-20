@@ -225,7 +225,6 @@ buffer_cache_flush(void)
       else
         lock_release(&searching_lock);
     }
-  bitmap_write()
 }
 
 static void

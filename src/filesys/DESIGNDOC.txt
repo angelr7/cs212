@@ -33,6 +33,17 @@ Fabian Luna <luna1206@stanford.edu>
 >> A2: What is the maximum size of a file supported by your inode
 >> structure?  Show your work.
 
+Oour inode structure allows for file sizes of 8460288 bytes
+12 Direct Nodes = 512 bytes * 12 = 6144 bytes
+
+- Since we can have 128 pointers on one block
+1 Indirect Node = 512 bytes * 128 = 65536 bytes
+- Since we have 128 indirect nodes
+1 Double Indirect Node = 512 bytes * 128 * 128 = 8388608
+
+6144 + 65536 + 8388608 = 8460288 bytes
+
+
 ---- SYNCHRONIZATION ----
 
 >> A3: Explain how your code avoids a race if two processes attempt to
@@ -105,13 +116,29 @@ enough data to handle 8mb files.
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+
+
 ---- ALGORITHMS ----
 
 >> B2: Describe your code for traversing a user-specified path.  How
 >> do traversals of absolute and relative paths differ?
 
 We have a function called parse_path which we utilize numerous times to
-traverse paths. 
+traverse paths. We first check the path as we do with names. We pass
+in the path, dir, and last_name. We utilize the path to populate the
+dir and last_name name where dir is the parent directory and last_name
+is the file or directory which we will be working with. If the path is a 
+regular path that ends with / we will not accept this path and return
+false. 
+
+To handle absolute vs relative paths we check to see if it begins with
+a /. If it begins with a / we us the root path, otherwise we utilize
+the current working directory of this thread which we set upon initialization.
+We then deal with the rest of the path name by looping through it using 
+strtokr. We close each of the directories along the way, if we are 
+unable to locate a directory along the way we return false. In the event
+that we are only working with the path "/" we  return lastname = "."
+
 
 
 ---- SYNCHRONIZATION ----

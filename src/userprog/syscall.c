@@ -418,9 +418,7 @@ remove(const char *file, struct intr_frame *f)
 {
   verify_string(file);
 
-  // lock_acquire(&filesys_lock);
   bool success = filesys_remove(file);
-  // lock_release(&filesys_lock);
   f->eax = success;
 }
 
@@ -428,17 +426,11 @@ remove(const char *file, struct intr_frame *f)
 static void
 open(const char *file, struct intr_frame *f)
 {
-  // struct dir *dir;
-  // char *last_name[NAME_MAX + 1];
-  // parse_path (file, &dir, last_name);
-  // verify_string(file);
   verify_string(file);
   struct file *opened_file = filesys_open(file);
   
-  // lock_release(&filesys_lock);
   if (opened_file == NULL)
   {
-    // printf("open failed for file file: %s\n", file);
     f->eax = -1;
     return;
   }
@@ -468,9 +460,7 @@ filesize(int fd, struct intr_frame *f)
     f->eax = -1;
     return;
   }
-  // lock_acquire(&filesys_lock);
   int size = file_length(fd_elem->file);
-  // lock_release(&filesys_lock);
   f->eax = size;
 }
 
@@ -494,9 +484,7 @@ read(int fd, void *buffer, unsigned length, struct intr_frame *f)
     f->eax = -1;
     return;
   }
-  // lock_acquire(&filesys_lock);
   int bytes_read = file_read(fd_elem->file, buffer, length);
-  // lock_release(&filesys_lock);
   f->eax = bytes_read;
   return;
 }
@@ -520,9 +508,7 @@ write(int fd, const void *buffer, unsigned int length, struct intr_frame *f)
     f->eax = -1;
     return;
   }
-  // lock_acquire(&filesys_lock);
   int bytes_written = file_write(fd_elem->file, buffer, length);
-  // lock_release(&filesys_lock);
   f->eax = bytes_written;
 }
 
@@ -535,9 +521,7 @@ seek(int fd, unsigned position)
   {
     return;
   }
-  // lock_acquire(&filesys_lock);
   file_seek(fd_elem->file, position);
-  // lock_release(&filesys_lock);
 }
 
 /*Tell */
@@ -550,9 +534,7 @@ tell(int fd, struct intr_frame *f)
     f->eax = -1;
     return;
   }
-  // lock_acquire(&filesys_lock);
   int position = file_tell(fd_elem->file);
-  // lock_release(&filesys_lock);
   f->eax = position;
 }
 
@@ -569,13 +551,10 @@ close(int fd)
   if (fd_elem->num_mappings > 0)
     return;
 
-  // lock_acquire(&filesys_lock);
-  
   if (fd_elem->is_dir)
     dir_close(fd_elem->dir);
   else
     file_close(fd_elem->file);
-  // lock_release(&filesys_lock);
   list_remove(&fd_elem->elem);
   free(fd_elem);
 }
@@ -603,9 +582,7 @@ mmap(int fd, void *addr, struct intr_frame *f)
     return;
   }
 
-  // lock_acquire(&filesys_lock);
   int size = file_length(fd_elem->file);
-  // lock_release(&filesys_lock);
 
   /* if the size of the file is 0, fail */ 
   if (size == 0)
@@ -705,7 +682,8 @@ chdir (const char *dir, struct intr_frame *f)
     f->eax = false;
     return;
   }
-  // looking for target directory
+  
+  /* Looking for target directory */
   struct inode *inode;
   if (!dir_lookup (cur_dir, last_name, &inode) || !inode->is_dir)
   {
@@ -726,43 +704,6 @@ chdir (const char *dir, struct intr_frame *f)
   thread_current()->working_dir = new_working_dir;
   f->eax = true;
   return;
-
-
-  // struct dir *initial_working_dir = thread_current()->working_dir;
-  // struct dir *cur_dir = initial_working_dir;
-  // if (*dir == '/')
-  // {
-  //   cur_dir = dir_open_root();
-  // }
-
-
-
-  // char dir_copy[strlen(dir) + 1];
-  // strlcpy(dir_copy, dir, strlen(dir) + 1);
-  // char *token, *save_ptr;
-
-  // for (token = strtok_r (dir_copy, "/", &save_ptr); token != NULL;
-  //     token = strtok_r (NULL, "/", &save_ptr))
-  // {
-  //   if (strlen(token) == 0) continue;
-  //   struct inode *inode;
-  //   if (!dir_lookup(cur_dir, token, &inode) && cur_dir != initial_working_dir)
-  //   {
-  //     dir_close(cur_dir);
-  //     f->eax = false;
-  //     return;
-  //   }
-  //   dir_close(cur_dir);
-  //   cur_dir = dir_open(inode);
-  //   if (cur_dir == NULL)
-  //   {
-  //     f->eax = false;
-  //     return;
-  //   }
-  // }
-  // thread_current()->working_dir = cur_dir;
-  // f->eax = true;
-  // return;
 }
 
 static void
@@ -777,7 +718,8 @@ mkdir (const char *dir, struct intr_frame *f)
     f->eax = false;
     return;
   }
-  // attemping to create new directory
+
+  /* Attempting to create new directory */
   struct inode *inode;
   if (dir_lookup (cur_dir, last_name, &inode))
   {
@@ -807,7 +749,6 @@ mkdir (const char *dir, struct intr_frame *f)
 static void
 readdir (int fd, char name[NAME_MAX + 1], struct intr_frame *f)
 {
-  // verify_pointer(name, sizeof(char *));
   struct fd_elem *fd_elem = list_find_fd_elem(thread_current(), fd);
   if (fd_elem == NULL || !fd_elem->file->inode->is_dir)
   {
@@ -818,7 +759,6 @@ readdir (int fd, char name[NAME_MAX + 1], struct intr_frame *f)
   bool success = dir_readdir(dir, name);
   while (success && (strcmp(name, ".") == 0 || strcmp(name, "..") == 0))
   {
-    // printf("%s\n", name);mk
     success = dir_readdir(dir, name);
     if (!success)
     {
@@ -828,19 +768,6 @@ readdir (int fd, char name[NAME_MAX + 1], struct intr_frame *f)
   }
   f->eax = success;
   return;
-  // while (!entry_read || strcmp(name, ".") == 0 || strcmp(name, "..") == 0)
-  // {
-  //   printf("%s\n", name);
-  //   if (dir == NULL || !dir_readdir(dir, name))
-  //   {
-  //     f->eax = false;
-  //     return;
-  //   }
-  //   entry_read = true;
-  // }
-  // printf("return name: %s\n", name);
-  // f->eax = true;
-  //   return;
 }
 
 static void
@@ -904,11 +831,8 @@ parse_path (const char *path, struct dir **last_dir, char *last_name)
   strlcpy(dir_copy, path, strlen(path) + 1);
   char *token, *save_ptr;
 
-  // printf("path: %s\n", path);
   token = strtok_r (dir_copy, "/", &save_ptr);
   bool is_root = (token == NULL);
-  // printf("token: %s\n", token);
-  // printf("%s\n",);
   while (token != NULL)
   {
     if (strlen(token) == 0) 
@@ -916,23 +840,17 @@ parse_path (const char *path, struct dir **last_dir, char *last_name)
     if (strlen(token) > (size_t)(NAME_MAX + 1))
       return false;
     
-    // printf("token before copy: %s\n", token);
     strlcpy(last_name, token, strlen(token) + 1);
-    // printf("last name after copy: %s\n", last_name);
 
     token = strtok_r (NULL, "/", &save_ptr);
-    // printf("token after strtok: %s\n", token);
     if (token == NULL) 
     {
-      
-      // printf("token null breaking\n");
       break;
     }
     struct inode *inode; 
 
     if (!dir_lookup(cur_dir, last_name, &inode))
     {
-      // printf("dir lookup failed\n");
       dir_close(cur_dir);
       return false;
     }
@@ -941,12 +859,8 @@ parse_path (const char *path, struct dir **last_dir, char *last_name)
     cur_dir = dir_open(inode);
     if (cur_dir == NULL)
       return false;
-    // printf("last name: %s\n", last_name);
-    // printf("token: %s\n", token);
   }
 
-  // printf("last name: %s\n", last_name);
-  // printf("token: %s\n", token);
   if (is_root)
     strlcpy(last_name, ".\0", 2);
   *last_dir = cur_dir;

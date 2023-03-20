@@ -13,25 +13,6 @@
 
 #define BUFFER_CACHE_SIZE 64
 
-// struct cache_entry
-//   {
-//     block_sector_t sector_idx;
-//     bool accessed;
-//     bool dirty;
-//     int num_active;
-//     unsigned char data[BLOCK_SECTOR_SIZE];
-//     struct lock lock;
-//   };
-
-// struct read_ahead_struct {
-//   block_sector_t sector_id; 
-//   struct list_elem elem;
-// };
-
-// static struct list read_ahead_ids;
-// static struct condition read_ahead;
-// static struct lock read_ahead_lock;
-
 static struct cache_entry **buffer_cache;
 static struct bitmap *used_map;
 static struct lock searching_lock;
@@ -47,10 +28,6 @@ static void read_ahead_thread_func(void *);
 int dump_buffer_cache(void);
 
 int dump_buffer_cache() {
-  // while (*buffer_cache != NULL) {
-  //   printf("%zu\n", (*buffer_cache)->num_active);
-  //   buffer_cache += 1;
-  // }
   bool all_have_active = true;
   for (int i = 0; i < BUFFER_CACHE_SIZE; i++) {
     all_have_active = buffer_cache[i]->num_active > 0;
@@ -92,7 +69,9 @@ read_ahead_thread_func(void *AUX UNUSED)
     lock_release(&read_ahead_lock);
 
     if (list_elem != NULL) {
-      struct read_ahead_struct *read_ahead_struct = list_entry(list_elem, struct read_ahead_struct, elem);
+      struct read_ahead_struct *read_ahead_struct = list_entry(list_elem, 
+                                                              struct read_ahead_struct,
+                                                              elem);
       block_sector_t sector_id = read_ahead_struct->sector_id;
       struct cache_entry *entry = buffer_cache_read(fs_device, sector_id, NULL, 0, 0);
       lock_acquire(&entry->lock);
@@ -105,7 +84,8 @@ read_ahead_thread_func(void *AUX UNUSED)
 }
 
 void *
-buffer_cache_read(struct block *block, block_sector_t sector_idx, void *buffer, int sector_ofs, int size)
+buffer_cache_read(struct block *block, block_sector_t sector_idx,
+                  void *buffer, int sector_ofs, int size)
 {
   lock_acquire(&searching_lock);
   struct cache_entry *entry = find_cache_entry(sector_idx);
@@ -123,15 +103,13 @@ buffer_cache_read(struct block *block, block_sector_t sector_idx, void *buffer, 
   }
 
   lock_acquire(&entry->lock);
+  entry->accessed = true;
   lock_release(&entry->lock);
 
   if (buffer == NULL) {
-    // lock_release(&searching_lock);
     return entry;
   }
 
-  // acquire lock to ensure that sector has been read in if wasn't in cache
-  // lock_release(&searching_lock);
   memcpy(buffer, entry->data + sector_ofs, size);
 
   lock_acquire(&entry->lock);
@@ -139,11 +117,11 @@ buffer_cache_read(struct block *block, block_sector_t sector_idx, void *buffer, 
   lock_release(&entry->lock);
 
   return NULL;
-  // thread_create read ahead
 }
 
 void
-buffer_cache_write(struct block *block, block_sector_t sector_idx, void *buffer, int sector_ofs, int size)
+buffer_cache_write(struct block *block, block_sector_t sector_idx,
+                   void *buffer, int sector_ofs, int size)
 {
   lock_acquire(&searching_lock);
   struct cache_entry *entry = find_cache_entry(sector_idx);
@@ -159,11 +137,11 @@ buffer_cache_write(struct block *block, block_sector_t sector_idx, void *buffer,
     lock_release(&entry->lock);
     lock_release(&searching_lock);
   }
-  // acquire lock to ensure that sector has been read in if wasn't in cache
+  /* Acquire lock to ensure that sector has been read in if wasn't in cache. */
   lock_acquire(&entry->lock);
   entry->dirty = true;
+  entry->accessed = true;
   lock_release(&entry->lock);
-  // lock_release(&searching_lock);
   memcpy(entry->data + sector_ofs, buffer, size);
   lock_acquire(&entry->lock);
   entry->num_active--;
@@ -190,9 +168,10 @@ cache_evict(struct block *block, block_sector_t sector_idx)
 {
   struct cache_entry *entry = buffer_cache[evict_idx % BUFFER_CACHE_SIZE];
   lock_acquire(&entry->lock);
-  while (entry->num_active > 0) // TODO: evict algo bool checks
+  while (entry->num_active > 0 || entry->accessed)
   {
     lock_release(&entry->lock);
+    entry->accessed = false;
     entry = buffer_cache[++evict_idx % BUFFER_CACHE_SIZE];
     lock_acquire(&entry->lock);
   }
@@ -200,6 +179,7 @@ cache_evict(struct block *block, block_sector_t sector_idx)
   write_out_sector(block, old_sector_idx, entry);
   entry->sector_idx = sector_idx;
   entry->num_active++;
+  entry->accessed = false;
   return evict_idx++ % BUFFER_CACHE_SIZE;
 }
 
@@ -253,7 +233,6 @@ buffer_cache_flush(void)
       else
         lock_release(&searching_lock);
     }
-  
 }
 
 static void
@@ -261,7 +240,7 @@ flush_thread_func(void *AUX UNUSED)
 {
   while (true)
   {
-    timer_sleep(TIMER_FREQ);
+    timer_sleep(TIMER_FREQ / 2);
     buffer_cache_flush();
   }
 }

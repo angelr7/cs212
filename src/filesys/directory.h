@@ -19,8 +19,8 @@ struct inode;
 /* A directory. */
 struct dir 
   {
-    struct inode *inode;                /* Backing store. */
-    off_t pos;                          /* Current position. */
+    struct inode *inode;     /* Backing store. */
+    off_t pos;               /* Current position. */
   };
 
 /* Opening and closing directories. */

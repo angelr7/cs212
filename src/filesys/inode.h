@@ -10,16 +10,14 @@ struct bitmap;
 
 struct inode
 {
-  struct list_elem elem;  /* Element in inode list. */
-  bool is_dir;
-  int num_entries;
-  block_sector_t sector;  /* Sector number of disk location. */
-  int open_cnt;           /* Number of openers. */
-  bool removed;           /* True if deleted, false otherwise. */
-  int deny_write_cnt;     /* 0: writes ok, >0: deny writes. */
-  struct lock eof_lock;
-  struct lock length_lock;
-  // struct inode_disk data; /* Inode content. */
+  struct list_elem elem;    /* Element in inode list. */
+  bool is_dir;              /* True if inode is for directory file. */
+  block_sector_t sector;    /* Sector number of disk location. */
+  int open_cnt;             /* Number of openers. */
+  bool removed;             /* True if deleted, false otherwise. */
+  int deny_write_cnt;       /* 0: writes ok, >0: deny writes. */
+  struct lock eof_lock;     /* Lock used while writing past eof. */
+  struct lock length_lock;  /* Lock used while accessing file length. */
 };
 
 void inode_init (void);

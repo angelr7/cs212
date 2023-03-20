@@ -7,13 +7,6 @@
 #include "filesys/inode.h"
 #include "threads/malloc.h"
 
-// /* A directory. */
-// struct dir 
-//   {
-//     struct inode *inode;                /* Backing store. */
-//     off_t pos;                          /* Current position. */
-//   };
-
 /* A single directory entry. */
 struct dir_entry 
   {
@@ -102,7 +95,6 @@ dir_create (block_sector_t sector, size_t entry_cnt, struct dir *parent_dir)
     return success;
   }
   success = dir_add(cur_dir, "..", parent_dir->inode->sector);
-  // inode_close(cur_inode);
   dir_close(cur_dir);
   
   return success;
@@ -300,7 +292,7 @@ dir_remove (struct dir *dir, const char *name)
   if (inode->is_dir)
   {
     int num_entries = get_num_entries(inode);
-    if (num_entries > 0 || inode->open_cnt - 1 > 0)
+    if (num_entries > 0 || inode->open_cnt - 2 > 0)
       goto done;
   }
 

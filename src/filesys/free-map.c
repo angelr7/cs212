@@ -8,7 +8,6 @@
 
 static struct file *free_map_file;   /* Free map file. */
 static struct bitmap *free_map;      /* Free map, one bit per sector. */
-// static struct lock free_map_lock;
 
 void
 free_map_flush (void)
@@ -25,7 +24,6 @@ free_map_init (void)
     PANIC ("bitmap creation failed--file system device is too large");
   bitmap_mark (free_map, FREE_MAP_SECTOR);
   bitmap_mark (free_map, ROOT_DIR_SECTOR);
-  // lock_init(&free_map_lock);
 }
 
 /* Allocates CNT  sectors from the free map and stores
@@ -36,7 +34,6 @@ free_map_init (void)
 bool
 free_map_allocate (size_t cnt, block_sector_t *sectorp)
 {
-  // lock_acquire(&free_map_lock);
   block_sector_t sector = bitmap_scan_and_flip (free_map, 0, cnt, false);
   if (sector != BITMAP_ERROR
       && free_map_file != NULL
@@ -48,7 +45,6 @@ free_map_allocate (size_t cnt, block_sector_t *sectorp)
     
   if (sector != BITMAP_ERROR)
     *sectorp = sector;
-  // lock_release(&free_map_lock);
   return sector != BITMAP_ERROR;
 }
 

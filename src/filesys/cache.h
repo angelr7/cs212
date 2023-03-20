@@ -13,8 +13,8 @@ struct cache_entry
   bool accessed;
   bool dirty;
   int num_active;
-  unsigned char data[BLOCK_SECTOR_SIZE];
   struct lock lock;
+  unsigned char data[BLOCK_SECTOR_SIZE];
 };
 
 struct read_ahead_struct 

@@ -95,7 +95,6 @@ void thread_init(void)
   list_init(&ready_list);
   list_init(&all_list);
   lock_init(&process_lock);
-  // lock_init(&filesys_lock);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread();
@@ -461,7 +460,6 @@ init_thread(struct thread *t, const char *name, int priority)
 
   if (initial_thread->working_dir != NULL)
     t->working_dir = dir_reopen(thread_current()->working_dir);
-    // t->working_dir = thread_current()->working_dir;
 
   old_level = intr_disable();
   list_push_back(&all_list, &t->allelem);

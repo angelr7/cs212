@@ -102,7 +102,8 @@ fsutil_extract (char **argv UNUSED)
       block_read (src, sector++, header);
       error = ustar_parse_header (header, &file_name, &type, &size);
       if (error != NULL)
-        PANIC ("bad ustar header in sector %"PRDSNu" (%s)", sector - 1, error);
+        PANIC ("bad ustar header in sector %"PRDSNu" (%s)", 
+                sector - 1, error);
 
       if (type == USTAR_EOF)
         {

@@ -132,7 +132,7 @@ buffer_cache_write(struct block *block, block_sector_t sector_idx, void *buffer,
     lock_release(&entry->lock);
     lock_release(&searching_lock);
   }
-  // acquire lock to ensure that sector has been read in if wasn't in cache
+  /* acquire lock to ensure that sector has been read in if wasn't in cache */
   lock_acquire(&entry->lock);
   entry->dirty = true;
   lock_release(&entry->lock);

@@ -44,7 +44,7 @@ static block_sector_t pos_to_sector_idx(off_t pos)
 static block_sector_t
 sector_idx_to_num(block_sector_t *pointers, block_sector_t sector_idx)
 {
-  // mapid list of current thread corrupts after next line executes for file lg-create test
+  /* mapid list of current thread corrupts after next line executes for file lg-create test */
   block_sector_t sector_num = 0;
   if (sector_idx < 12)
     return pointers[sector_idx];
@@ -451,7 +451,6 @@ off_t inode_write_at(struct inode *inode, const void *buffer_, off_t size,
 {
   const uint8_t *buffer = buffer_;
   off_t bytes_written = 0;
-  // uint8_t *bounce = NULL;
 
   if (inode->deny_write_cnt)
     return 0;

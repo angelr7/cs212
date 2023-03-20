@@ -19,7 +19,6 @@ struct inode
   int deny_write_cnt;     /* 0: writes ok, >0: deny writes. */
   struct lock eof_lock;
   struct lock length_lock;
-  // struct inode_disk data; /* Inode content. */
 };
 
 void inode_init (void);

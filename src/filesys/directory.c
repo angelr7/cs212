@@ -271,7 +271,7 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
 bool
 dir_remove (struct dir *dir, const char *name) 
 {
-  
+  lock_acquire(&dir_lock);
   struct dir_entry e;
   struct inode *inode = NULL;
   bool success = false;
@@ -309,7 +309,7 @@ dir_remove (struct dir *dir, const char *name)
   if (success)
     decrement_num_entries(dir->inode);
   inode_close (inode);
-  
+  lock_release(&dir_lock);
   return success;
 }
 

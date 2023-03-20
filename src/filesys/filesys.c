@@ -129,8 +129,8 @@ filesys_remove (const char *path)
     dir_close(dir);
     return false;
   }
-  inode_close(inode);
   bool success = dir_remove(dir, last_name);
+  inode_close(inode);
   dir_close(dir);
   return success;
 }

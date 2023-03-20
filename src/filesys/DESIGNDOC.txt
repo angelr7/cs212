@@ -121,9 +121,10 @@ traverse paths.
 >> should succeed, as should only one of two simultaneous attempts to
 >> create a file with the same name, and so on.
 
-We have a directory lock, wheenver chhanging creating or reading 
-syscall directories or whenevering creating or removing a directory we
-lock to ensure that this can not happen at the same time. 
+To prevent races on directory entries we utilized a directory lock. This
+lock ensures that changing, removing, or creating a directory does
+not happen concurrently. This will ensure that no races conditions
+will occur and that there are no accidental duplicates in our system.
 
 >> B5: Does your implementation allow a directory to be removed if it
 >> is open by a process or if it is in use as a process's current
@@ -168,22 +169,33 @@ struct cache_entry
   unsigned char data[BLOCK_SECTOR_SIZE];
   struct lock lock;
 };
-The read_ahead_struct will 
+The read_ahead_struct contains the sector_id so that the read ahead
+thread is able to read_ahead the following sector
 struct read_ahead_struct 
 {
   block_sector_t sector_id; 
   struct list_elem elem;
 };
 
-
+List of read_ahead_structs for read ahead thread
 struct list read_ahead_ids;
+
+Condition variable to wake up read_ahead_thread
 struct condition read_ahead;
+
+lock for read_ahead_thread
 struct lock read_ahead_lock;
 
+Array of 64 cache_entries that make up our buffer cache
 static struct cache_entry **buffer_cache;
+
+Bitmap of used blocks in our cache
 static struct bitmap *used_map;
+
+Lock to be used when searching for a particular entry
 static struct lock searching_lock;
 
+Evict idx used for eviction algorithm location
 static int evict_idx;
 
 

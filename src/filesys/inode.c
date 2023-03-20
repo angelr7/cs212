@@ -323,8 +323,6 @@ inode_open(block_sector_t sector)
   lock_init(&inode->length_lock);
   buffer_cache_read(fs_device, inode->sector, &inode->is_dir,
                     sizeof(block_sector_t), sizeof(int));
-  buffer_cache_read(fs_device, inode->sector, &inode->num_entries, 
-                    sizeof(uint32_t) * 16, sizeof(int));
   return inode;
 }
 

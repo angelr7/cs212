@@ -69,7 +69,9 @@ read_ahead_thread_func(void *AUX UNUSED)
     lock_release(&read_ahead_lock);
 
     if (list_elem != NULL) {
-      struct read_ahead_struct *read_ahead_struct = list_entry(list_elem, struct read_ahead_struct, elem);
+      struct read_ahead_struct *read_ahead_struct = list_entry(list_elem, 
+                                                              struct read_ahead_struct,
+                                                              elem);
       block_sector_t sector_id = read_ahead_struct->sector_id;
       struct cache_entry *entry = buffer_cache_read(fs_device, sector_id, NULL, 0, 0);
       lock_acquire(&entry->lock);
@@ -82,7 +84,8 @@ read_ahead_thread_func(void *AUX UNUSED)
 }
 
 void *
-buffer_cache_read(struct block *block, block_sector_t sector_idx, void *buffer, int sector_ofs, int size)
+buffer_cache_read(struct block *block, block_sector_t sector_idx,
+                  void *buffer, int sector_ofs, int size)
 {
   lock_acquire(&searching_lock);
   struct cache_entry *entry = find_cache_entry(sector_idx);
@@ -116,7 +119,8 @@ buffer_cache_read(struct block *block, block_sector_t sector_idx, void *buffer, 
 }
 
 void
-buffer_cache_write(struct block *block, block_sector_t sector_idx, void *buffer, int sector_ofs, int size)
+buffer_cache_write(struct block *block, block_sector_t sector_idx,
+                   void *buffer, int sector_ofs, int size)
 {
   lock_acquire(&searching_lock);
   struct cache_entry *entry = find_cache_entry(sector_idx);
@@ -132,7 +136,7 @@ buffer_cache_write(struct block *block, block_sector_t sector_idx, void *buffer,
     lock_release(&entry->lock);
     lock_release(&searching_lock);
   }
-  /* acquire lock to ensure that sector has been read in if wasn't in cache */
+  /* Acquire lock to ensure that sector has been read in if wasn't in cache. */
   lock_acquire(&entry->lock);
   entry->dirty = true;
   lock_release(&entry->lock);
@@ -225,7 +229,6 @@ buffer_cache_flush(void)
       else
         lock_release(&searching_lock);
     }
-  bitmap_write()
 }
 
 static void
@@ -233,7 +236,7 @@ flush_thread_func(void *AUX UNUSED)
 {
   while (true)
   {
-    timer_sleep(TIMER_FREQ);
+    timer_sleep(TIMER_FREQ / 2);
     buffer_cache_flush();
   }
 }
